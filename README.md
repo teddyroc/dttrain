@@ -529,3 +529,94 @@ df_submission.to_csv('cds_submission_MyTeam_4.csv')
 
 cv 하는거 참조
 https://dacon.io/en/competitions/official/235877/codeshare/4710
+
+
+**************************************************************22.07.06*******************************************************
+
+ANN
+from scikeras.wrappers import KerasClassifier, KerasRegressor
+from tensorflow.keras.utils import to_categorical
+from keras.layers import BatchNormalization, Activation
+from keras.models import Sequential
+from keras.layers.core import Dense
+
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from keras import regularizers
+from keras import backend as K
+
+def identity(arg):
+    return arg
+
+def root_mean_squared_error(y_true, y_pred):
+        return K.sqrt(K.mean(K.square(y_pred - y_true))) 
+        
+        
+def create_model():
+    model = Sequential()
+    model.add(Dense(128, input_dim=240))
+    model.add(BatchNormalization())                    # Add Batchnorm layer before Activation
+    model.add(Activation('relu'))  
+    model.add(Dense(64))
+    model.add(BatchNormalization())                    # Add Batchnorm layer before Activation
+    model.add(Activation('relu'))  
+    model.add(Dense(32))
+    model.add(BatchNormalization())                    # Add Batchnorm layer before Activation
+    model.add(Activation('relu'))  
+    model.add(Dense(1))
+    model.compile(optimizer='adam',
+                  loss=root_mean_squared_error,
+                  metrics=[tf.keras.metrics.RootMeanSquaredError(name='rmse')])
+    return model
+    
+model = create_model()
+model.fit(X_one_hot, y, epochs=100, batch_size=32, validation_split=0.15)
+
+
+STEP별 PCA
+
+df_final = df_train.copy()
+df_predict_final = df_predict.copy()
+
+step_lst = ['04','06','12','13','17','18','20']
+
+def pca_pre(datas,pred_datas, cols, n, step):
+    pca = decomposition.PCA(n_components = n)
+    pca_array = pca.fit_transform(datas[cols])
+    pca_array_pred = pca.transform(pred_datas[cols])
+    pca_df_train = pd.DataFrame(data = pca_array, columns = ['{0}_pca{1}'.format(step, num) for num in range(n)])
+    pca_df_pred = pd.DataFrame(data = pca_array_pred, columns = ['{0}_pca{1}'.format(step, num) for num in range(n)])
+    return pca_df_train, pca_df_pred
+    
+for i,col in enumerate(step_lst):
+    cols = df_final.filter(regex='^'+col).columns.tolist()
+    cols = list(set(cols))
+    cols.remove(col+'_end_time')
+    n_cols = len(cols)
+    pca = decomposition.PCA(n_components = n_cols-1)
+    pca_array = pca.fit_transform(df_final[cols])
+
+    result = pd.DataFrame({'설명가능한 분산 비율(고윳값)':pca.explained_variance_,\
+             '기여율':pca.explained_variance_ratio_},\
+            index=np.array([f"pca{num+1}" for num in range(n_cols-1)]))
+    result['누적기여율'] = result['기여율'].cumsum()
+    if len(result.loc[result['누적기여율']>=0.8,:].index) >=1:
+        n = result.loc[result['누적기여율']>=0.8,:].index[0][-2]
+        try:
+            n = int(result.loc[result['누적기여율']>=0.8,:].index[0][-2:])
+            df, df_p = pca_pre(df_final, df_predict_final, cols, n, col)
+            df_final = pd.concat([df_final, df],axis=1)
+            df_predict_final = pd.concat([df_predict_final, df_p],axis=1)
+            df_final.drop(cols, axis=1, inplace=True)
+            df_predict_final.drop(cols, axis=1, inplace=True)
+        except ValueError:
+            n = int(result.loc[result['누적기여율']>=0.8,:].index[0][-1])
+            df, df_p = pca_pre(df_final, df_predict_final, cols, n, col)
+            df_final = pd.concat([df_final, df],axis=1)
+            df_predict_final = pd.concat([df_predict_final, df_p],axis=1)
+            df_final.drop(cols, axis=1, inplace=True)
+            df_predict_final.drop(cols, axis=1, inplace=True)
+    else:
+        print(cols)
+        # 얘네는 그럼 줄일 수 없다? 혹은 drop이다.
