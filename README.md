@@ -620,3 +620,27 @@ for i,col in enumerate(step_lst):
     else:
         print(cols)
         # 얘네는 그럼 줄일 수 없다? 혹은 drop이다.
+
+
+ANN
+
+he = keras.initializers.he_normal(seed=0)
+def create_model():
+    model = Sequential()
+    model.add(Dense(128, input_dim=311, kernel_initializer=he))
+    model.add(Activation('relu'))  
+    model.add(Dense(64, kernel_initializer=he))
+    model.add(Activation('relu'))   
+    model.add(Dense(32, kernel_initializer=he))
+                      # Add Batchnorm layer before Activation
+    model.add(Activation('relu'))   
+    model.add(BatchNormalization())  
+    model.add(Dense(1))
+    model.compile(optimizer='adam',
+                  loss=root_mean_squared_error,
+                  metrics=[tf.keras.metrics.RootMeanSquaredError(name='rmse')])
+    return model
+    
+model = create_model()
+model.fit(X_one_hot, y, epochs=1000, batch_size=13, validation_split=0.15)
+ann_pred = model.predict(X_predict_one_hot)
