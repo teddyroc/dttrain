@@ -644,3 +644,85 @@ def create_model():
 model = create_model()
 model.fit(X_one_hot, y, epochs=1000, batch_size=13, validation_split=0.15)
 ann_pred = model.predict(X_predict_one_hot)
+
+
+
+220708 회사에서
+
+from scikeras.wrappers import KerasClassifier, KerasRegressor
+from tensorflow.keras.utils import to_categorical
+from keras.layers import BatchNormalization, Activation
+from keras.models import Sequential
+from keras.layers.core import Dense
+
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from keras import regularizers
+from keras import backend as K
+
+def identity(arg):
+    return arg
+
+def root_mean_squared_error(y_true, y_pred):
+    return K.sqrt(K.mean(K.square(y_pred - y_true))) 
+    
+he = keras.initializers.he_normal(seed=0)
+
+from keras.callbacks import EarlyStopping
+from keras.callbacks import ModelCheckpoint
+
+def RMSE(y, y_pred):
+    rmse = mean_squared_error(y, y_pred) ** 0.5
+    return rmse
+
+def create_model(): 
+    model = Sequential() 
+    model.add(Dense(128, kernel_initializer=he)) 
+    model.add(Activation('relu'))
+    model.add(Dense(64, kernel_initializer=he)) 
+    model.add(Activation('relu'))
+    model.add(Dense(32, kernel_initializer=he)) # Add Batchnorm layer before Activation model.add(Activation('relu'))
+    model.add(BatchNormalization())
+    model.add(Dense(1)) 
+    model.compile(optimizer='adam', loss=root_mean_squared_error, metrics=[tf.keras.metrics.RootMeanSquaredError(name='rmse')]) 
+    return model
+
+# model = create_model() 
+# model.fit(X_one_hot, y, epochs=1000, batch_size=13, validation_split=0.15) 
+# ann_pred = model.predict(X_predict_one_hot)
+
+es = EarlyStopping(monitor='val_rmse', mode='min', verbose=1, patience=35)
+mc = ModelCheckpoint('best_model.h5', monitor='val_rmse', mode='min', save_best_only=True)
+
+anns = [create_model() for i in range(47)]
+idexss = 0
+for i in range(len(train_idxs)):
+    if i==0:
+        train_idx = range(train_idxs[i])
+        idexss += train_idxs[i]
+    else:
+        train_idx = range(train_idxs[i-1], idexss+train_idxs[i])
+        idexss += train_idxs[i]
+    X = df_final.loc[train_idx, num_features]
+    y = df_final.loc[train_idx, 'y']
+    
+    
+    X_cat = X
+    y_cat = pd.Series(y.values)
+    loo = LeaveOneOut()
+    ann = anns[i]
+    loo.get_n_splits(X_cat)
+    rmsle = []
+    for train_idx, test_idx in loo.split(X_cat):
+        ann.fit(X_cat.iloc[train_idx,:], y_cat.iloc[train_idx],epochs=1200, batch_size=8, validation_split=0.15, callbacks=[es])
+        ann_pred = ann.predict(X_cat.iloc[test_idx,:])
+        rmsle_val = RMSE(y_cat.iloc[test_idx], ann_pred)
+        rmsle.append(rmsle_val)
+    print(np.mean(rmsle))
+    
+    ann.fit(X_cat, y_cat,epochs=1200, batch_size=8, validation_split=0.15, callbacks=[es,mc])
+    anns[i] = ann
+    print('{}번째 모델 훈련이 완료되었습니다.'.format(i+1))
+    
+    
