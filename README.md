@@ -163,4 +163,47 @@ for i, (trains,predicts) in enumerate(zip(df_trains,df_predicts)):
     num_features.remove('y')
     num_features_lst.append(num_features)
     
+모델링 진행
+
+xgbs = []
+for (train, num_f) in zip(df_trains,num_features_lst):
+    def objective(trial):
+        params_xgb = {
+            'booster':trial.suggest_categorical('booster',['gbtree','dart']),
+            "reg_lambda": trial.suggest_float("reg_lambda", 0, 1.0),
+            'colsample_bytree': trial.suggest_int('colsample_bytree', 0.3,1.0),
+            'subsample': trial.suggest_float('subsample', 0.3, 1.0),
+            'learning_rate': trial.suggest_loguniform('learning_rate', 0.01, 0.5),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 10000),
+            'max_depth': trial.suggest_int("max_depth", 4, 12),
+            'random_state': trial.suggest_categorical('random_state', [0]),
+            'min_child_weight': trial.suggest_int('min_child_weight', 1, 300),
+    #         'tree_method':'gpu_hist',
+    #         'gpu_id':'0'
+        }
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = xgb.XGBRegressor(**params_xgb)
+        loo = LeaveOneOut()
+        scores = cross_val_score(model, X, y, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print('CV scores for {0}: {1}'.format([i,scores]))
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+     
+        return rmsle_val
     
+    sampler = TPESampler(seed=42)
+    study = optuna.create_study(
+    study_name="xgb_parameter_opt",
+    direction="minimize",
+    sampler=sampler,
+    )
+    study.optimize(objective, n_trials=30)
+    print("Best Score:", study.best_value)
+    print("Best trial:", study.best_trial.params)
+    
+    model = xgb.XGBRegressor(**study.best_params)
+    model.fit(train[num_f], np.log1p(train['y']))
+    xgbs.append(model)
