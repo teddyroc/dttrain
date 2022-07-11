@@ -207,3 +207,123 @@ for (train, num_f) in zip(df_trains,num_features_lst):
     model = xgb.XGBRegressor(**study.best_params)
     model.fit(train[num_f], np.log1p(train['y']))
     xgbs.append(model)
+    
+    
+    
+    ''' E와 L 나누려면 '''
+df_final = df_train.copy()
+df_predict_final = df_predict.copy()
+
+E = df_final[df_final['gen_tmdiff']<=1870].copy()
+L = df_final[df_final['gen_tmdiff']>1870].copy()
+
+E_pred = df_predict_final[df_predict_final['gen_tmdiff']<=1870].copy()
+L_pred = df_predict_final[df_predict_final['gen_tmdiff']>1870].copy()
+
+''' E 중복열 제거 '''
+drop_col = []
+for para in for_col_filter:
+    col = E.filter(regex='^'+para).columns.tolist()
+    duplicate_deleted_df = E[col].T.drop_duplicates(subset=E[col].T.columns, keep='first').T
+    if len(E[col].columns.difference(duplicate_deleted_df.columns))==0:  # 다른게 없으면 무시,
+        continue
+    else:
+        drop_col.extend(E[col].columns.difference(duplicate_deleted_df.columns).tolist())
+E = E.drop(drop_col,axis=1)
+E_pred = E_pred.drop(drop_col, axis=1)
+print('E에서 중복열 :', drop_col)
+
+''' L 중복열 제거 '''
+
+drop_col = []
+for para in for_col_filter:
+    col = L.filter(regex='^'+para).columns.tolist()
+    duplicate_deleted_df = L[col].T.drop_duplicates(subset=L[col].T.columns, keep='first').T
+    if len(L[col].columns.difference(duplicate_deleted_df.columns))==0:  # 다른게 없으면 무시,
+        continue
+    else:
+        drop_col.extend(L[col].columns.difference(duplicate_deleted_df.columns).tolist())
+L = L.drop(drop_col,axis=1)
+L_pred = L_pred.drop(drop_col, axis=1)
+print('L에서 중복열 :', drop_col)
+
+''' feature 정의'''
+num_features = list(E.columns[E.dtypes==float])
+num_features.remove('y')
+# date_features = list(E.columns[E.dtypes==np.int64])
+col_numerical = num_features
+    
+''' 분산 0인 col 제거 '''
+thresholder = VarianceThreshold(threshold=0)
+_ = thresholder.fit_transform(E[col_numerical])
+
+ # 분산이 0이면 True 이므로 제거할 컬럼을 추출합니다.  
+mask = ~thresholder.get_support()
+cols_var_drop = np.asarray(col_numerical)[mask].tolist()
+print(f'** {len(cols_var_drop)} Features to Drop by Low Variance')
+print(f'{cols_var_drop}')
+E = E.drop(cols_var_drop,axis=1)
+
+''' feature 정의'''
+num_features = list(L.columns[L.dtypes==float])
+num_features.remove('y')
+# date_features = list(L.columns[L.dtypes==np.int64])
+col_numerical = num_features
+    
+''' 분산 0인 col 제거 '''
+thresholder = VarianceThreshold(threshold=0)
+_ = thresholder.fit_transform(L[col_numerical])
+
+ # 분산이 0이면 True 이므로 제거할 컬럼을 추출합니다.  
+mask = ~thresholder.get_support()
+cols_var_drop = np.asarray(col_numerical)[mask].tolist()
+print(f'** {len(cols_var_drop)} Features to Drop by Low Variance')
+print(f'{cols_var_drop}')
+L = L.drop(cols_var_drop,axis=1)
+
+''' feature 재정의'''
+E_num_features = list(E.columns[E.dtypes==float])
+cat_features = ['module_name']
+# date_features = list(df_final.columns[df_final.dtypes==np.int64])
+E_train = E_num_features + cat_features
+E_num_features.remove('y')
+E_predict = E_num_features + cat_features
+
+''' feature 재정의'''
+L_num_features = list(L.columns[L.dtypes==float])
+# date_features = list(df_final.columns[df_final.dtypes==np.int64])
+L_train = L_num_features + cat_features
+L_num_features.remove('y')
+L_predict = L_num_features + cat_features
+
+def prep_cate_feats(df_tr, df_te, feat_nm):
+
+    df_merge = pd.concat([df_tr, df_te])
+
+    # 컬럼명과 범주형 변수의 레벨명을 이용한 새로운 컬럼명을 자동생성합니다. 
+    # ex. module_name_eq -> module_name_eq_EQ01, module_name_eq_EQ02, etc.
+    df_merge = pd.get_dummies(df_merge, columns=[feat_nm])
+
+    df_tr = df_merge.iloc[:df_tr.shape[0], :].reset_index(drop=True)
+    df_te = df_merge.iloc[df_tr.shape[0]:, :].reset_index(drop=True)
+
+    return df_tr, df_te
+
+# module_name_eq 의 원-핫 인코딩 변수를 생성합니다.
+E, E_pred = prep_cate_feats(E[E_train], E_pred[E_predict], 'module_name')
+L, L_pred = prep_cate_feats(L[L_train], L_pred[L_predict], 'module_name')
+
+''' feature 재정의'''
+E_num_features = list(E.columns[E.dtypes==float])
+module_col = E.filter(regex='^module_name').columns.tolist()
+E_num_features.remove('y')
+# date_features = list(df_final.columns[df_final.dtypes==np.int64])
+E_train = E_num_features + module_col
+E_predict = E_num_features + module_col
+
+''' feature 재정의'''
+L_num_features = list(L.columns[L.dtypes==float])
+L_num_features.remove('y')
+# date_features = list(df_final.columns[df_final.dtypes==np.int64])
+L_train = L_num_features + module_col
+L_predict = L_num_features + module_col
