@@ -327,3 +327,41 @@ L_num_features.remove('y')
 # date_features = list(df_final.columns[df_final.dtypes==np.int64])
 L_train = L_num_features + module_col
 L_predict = L_num_features + module_col
+
+
+''' 혹시 ngb '''
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
+from ngboost import NGBRegressor
+from ngboost.learners import default_tree_learner
+from ngboost.distns import Normal
+from ngboost.scores import MLE, CRPS
+
+def objective_NGB(trial):
+    param = {
+      "random_state":42,
+      'learning_rate' : trial.suggest_float('learning_rate', 0.01, 0.5),
+      "n_estimators":trial.suggest_int("n_estimators", 100, 10000),
+      "col_sample":trial.suggest_float("colsample", 0.2, 1.0),
+    'natural_gradient':trial.suggest_categorical("natural_gradient", [True,False]),
+    'verbose_eval':trial.suggest_int("verbose_eval", 10, 80),  
+
+  }
+    X_train, X_valid, y_train, y_valid = train_test_split(X_one_hot, y, test_size=0.2, shuffle=True, random_state=71)
+    ngb = NGBRegressor(Base=default_tree_learner, Dist=Normal,Score=MLE, **param)
+    ngb.fit(X_train,y_train, X_val=X_valid, Y_val=y_valid, early_stopping_rounds=20)
+    
+    ngb_pred = ngb.predict(X_valid)
+    rmsle_val = RMSE(y_valid, ngb_pred)
+
+    return rmsle_val
+    
+sampler = TPESampler(seed=42)
+study = optuna.create_study(
+    study_name="xgb_parameter_opt",
+    direction="minimize",
+    sampler=sampler,
+)
+study.optimize(objective_NGB, n_trials=10)
+print("Best Score:", study.best_value)
+print("Best trial:", study.best_trial.params)
