@@ -1,124 +1,6 @@
-# 학습용 데이터 
-train = make_dataset(train_sensor, train_quality)
-# 평가용 데이터 
-predict = make_dataset(predict_sensor)
+''' 최신 '''
 
-# 전체 및 개별 공정 소요시간 변수를 생성하는 함수입니다.
-def gen_duration_feats(df, lst_stepsgap):
-    
-    # 전체 공정 소요시간(초) 변수를 생성합니다. 
-    df['gen_tmdiff'] = (df['20_end_time'] - df['04_end_time']).dt.total_seconds()
-    
-    # 개별 스텝간 공정 소요시간(초) 변수를 생성합니다. 
-    # ex. gen_tmdiff_0406 : 04 스텝 공정 완료 시간과 06 스텝 공정 완료 시간의 차이 
-    
-    for stepgap in lst_stepsgap:
-        df[f'gen_tmdiff_{stepgap}'] = (df[f'{stepgap[2:]}_end_time'] - df[f'{stepgap[:2]}_end_time']).dt.total_seconds()
-
-    return df
-    
-    
-4. 데이터 전처리
-
-# 전처리를 위한 학습용 데이터와 평가용 데이터를 복사합니다.
-df_train = train.copy()
-df_predict = predict.copy()
-del train
-
-# -----------------------------------
-# 3 장 EDA 분석에 필요한 변수를 선언합니다.
-# -----------------------------------
-
-# 센서 컬럼과 날짜 컬럼을 정의합니다. 
-col_sensor = df_train.iloc[:, 4:-7].columns.tolist() 
-col_time = df_train.filter(regex='end').columns.tolist() 
-
-assert len(col_sensor) == 665
-assert len(col_time) == 8 
-
-# 3.4절 공정 소요시간 분석에 필요한 변수를 정의합니다. 
-lst_steps = ['04','06','12','13','17','18', '20']
-lst_stepsgap = ['0406','0612','1213','1317','1718','1820']
-
-''' step별로 fdc para명 따로 수집 '''
-lst_sensors = []
-for step in lst_steps:
-    _ = [col for col in col_sensor if col[:2] == step]
-    lst_sensors.append(_)
-
-sensors_nm = list(map(lambda x: x[3:], lst_sensors[0]))
-
-# 시간과 관련한 분석을 진행하기 위하여 날짜형으로 변환합니다. 
-df_train[col_time] = df_train[col_time].apply(pd.to_datetime)
-
-''' 여기서부터가 중요 '''
-for_col_filter = []
-for step_para in lst_sensors:
-    for para in step_para:
-        para = para.split('_')[0]+'_'+para.split('_')[1]
-        for_col_filter.append(para)
-for_col_filter = sorted(list(set(for_col_filter)))
-
-# 전체 및 개별 공정 소요시간 7개의 변수를 생성합니다(3.4절)
-df_train = gen_duration_feats(df_train, lst_stepsgap)
-df_predict = gen_duration_feats(df_predict, lst_stepsgap)
-df_train.filter(regex='tmdiff').head(2)
-
-''' Cyclic Transformation 적용 '''
-def cyclic_transformation(df, cols):
-    for col in cols:
-        step = col[:2]
-        df[col] = pd.to_datetime(df[col])
-        df[step+'_'+'hour'] = df[col].dt.hour
-        df[step+'_'+'month'] = df[col].dt.month
-        df[step+'_'+'day'] = df[col].dt.day
-        df[step+'_'+'weekday'] = df[col].dt.weekday
-        
-        ## cyclic transformation on hour
-        df[step+'_'+'hour_sin'] = np.sin(2 * np.pi * df[step+'_'+'hour']/23.0)
-        df[step+'_'+'hour_cos'] = np.cos(2 * np.pi * df[step+'_'+'hour']/23.0)
-        ## cyclic transformation on date 
-        df[step+'_'+'date_sin'] = -np.sin(2 * np.pi * (df[step+'_'+'month']+df[step+'_'+'day']/31)/12)
-        df[step+'_'+'date_cos'] = -np.cos(2 * np.pi * (df[step+'_'+'month']+df[step+'_'+'day']/31)/12)
-        ## cyclic transformation on month
-        df[step+'_'+'month_sin'] = -np.sin(2 * np.pi * df[step+'_'+'month']/12.0)
-        df[step+'_'+'month_cos'] = -np.cos(2 * np.pi * df[step+'_'+'month']/12.0)
-        ## cyclic transformation on weekday
-        df[step+'_'+'weekday_sin'] = -np.sin(2 * np.pi * (df[step+'_'+'weekday']+1)/7.0)
-        df[step+'_'+'weekday_cos'] = -np.cos(2 * np.pi * (df[step+'_'+'weekday']+1)/7.0)
-        
-        df.drop(step+'_'+'month',axis=1,inplace=True)
-        df.drop(step+'_'+'month_sin',axis=1,inplace=True)
-        df.drop(step+'_'+'month_cos',axis=1,inplace=True)
-        
-        
-endtime_col = df_train.filter(regex='end_time$').columns.tolist()
-cyclic_transformation(df_train, endtime_col)
-cyclic_transformation(df_predict, endtime_col)
-
-[[ Category 변수 처리 ]]
-''' CATEGORY 변수 처리 및 NUM FEATURE 정의 '''
-module2idx = {}
-for i, module in enumerate(df_train['module_name'].unique()):
-    module2idx[module] = i
-    
-# eq2idx = {}
-# for i, eq in enumerate(df_train['module_name_eq'].unique()):
-#     eq2idx[eq] = i
-    
-def col2cat(df, col, dict):
-    df[col] = df[col].apply(lambda x: dict[x])
-    df[col] = df[col].astype('category')
-    return df[col]
-
-# module_name cat 화
-col2cat(df_train, 'module_name', module2idx)
-col2cat(df_predict, 'module_name', module2idx)
-# eq cat 화
-# col2cat(df_train, 'module_name_eq', eq2idx)
-# col2cat(df_predict, 'module_name_eq', eq2idx)
-
-[[ 각 챔버별 전처리 ]]
+# 각 챔버별 전처리
 df_final = df_train.copy()
 df_predict_final = df_predict.copy()
 
@@ -126,6 +8,7 @@ module_unique = df_final['module_name'].unique()
 df_trains = [df_final[df_final['module_name']==eq] for eq in module_unique]
 num_features_lst = []
 df_predicts = [df_predict_final[df_predict_final['module_name']==eq] for eq in module_unique]
+''' 중복되는 열 제거하기. '''
 for i, (trains,predicts) in enumerate(zip(df_trains,df_predicts)):
     drop_col = []
     for para in for_col_filter:
@@ -142,8 +25,7 @@ for i, (trains,predicts) in enumerate(zip(df_trains,df_predicts)):
     num_features = list(df_trains[i].columns[df_trains[i].dtypes==float])
     num_features.remove('y')
     date_features = list(df_trains[i].columns[df_trains[i].dtypes==np.int64])
-    tmdiff_features = df_trains[i].filter(regex='^gen_').columns.tolist()
-    col_numerical = num_features + date_features + tmdiff_features
+    col_numerical = num_features + date_features
     
     ''' 분산 0인 col 제거 '''
     thresholder = VarianceThreshold(threshold=0)
@@ -158,55 +40,326 @@ for i, (trains,predicts) in enumerate(zip(df_trains,df_predicts)):
     df_trains[i] = trains.drop(cols_var_drop+['module_name'],axis=1)
     df_predicts[i] = predicts.drop(cols_var_drop+['module_name'], axis=1)
     
-    ''' Cyclic Transformation 된 time만 사용. '''
-    num_features = list(df_trains[i].columns[df_trains[i].dtypes==float])
+    ''' 1부터도 log transformation시 skewness와 kurtois가 많이 줄어듦. 효과적일 것이라 변환진행 ex) '20_time_para42' '''
+    skew1_df = ((trains.skew()>1)|(trains.skew()<-1)).reset_index().iloc[1:].reset_index(drop=True)
+    skew1_df.columns=['param','boolean']
+    high_skew1_col = skew1_df.loc[skew1_df['boolean'],:]['param'].unique().tolist()
+    ''' 04_fr_para28 , 06_fr_para28 음수를 가진 col인데, skew는 높지만 시각화시 괜찮아서 제외. '''
+    minus_col = trains[high_skew1_col][trains[high_skew1_col]<=0].dropna(axis=1).columns.tolist()
+    high_skew1_col = [x for x in high_skew1_col if x not in minus_col]
+    print(len(high_skew1_col))
+
+    trains[high_skew1_col] = np.log1p(trains[high_skew1_col])
+    predicts[high_skew1_col] = np.log1p(predicts[high_skew1_col])
+    df_trains[i] = trains
+    df_predicts[i] = predicts
+    
+    ''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
+    num_features = list(trains.columns[trains.dtypes==float])
     num_features.remove('y')
     num_features_lst.append(num_features)
     
-모델링 진행
+    
+# 모델링
 
-xgbs = []
-for (train, num_f) in zip(df_trains,num_features_lst):
-    def objective(trial):
-        params_xgb = {
-            'booster':trial.suggest_categorical('booster',['gbtree','dart']),
-            "reg_lambda": trial.suggest_float("reg_lambda", 0, 1.0),
-            'colsample_bytree': trial.suggest_int('colsample_bytree', 0.3,1.0),
-            'subsample': trial.suggest_float('subsample', 0.3, 1.0),
-            'learning_rate': trial.suggest_loguniform('learning_rate', 0.01, 0.5),
-            'n_estimators': trial.suggest_int('n_estimators', 100, 10000),
-            'max_depth': trial.suggest_int("max_depth", 4, 12),
-            'random_state': trial.suggest_categorical('random_state', [0]),
-            'min_child_weight': trial.suggest_int('min_child_weight', 1, 300),
-    #         'tree_method':'gpu_hist',
-    #         'gpu_id':'0'
+** LGB **
+
+lgbs = []
+lgb_scores = []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_LGB(trial):
+        param_lgb = {
+            'objective':'regression',
+            'metric':'rmse',
+            "random_state":42,
+            'learning_rate' : trial.suggest_float('learning_rate', 0.01, 0.7),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 4e-5),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
+            'bagging_fraction' :trial.suggest_loguniform('bagging_fraction', 0.01, 1.0),
+            "n_estimators":trial.suggest_int("n_estimators", 1000, 10000),
+            "max_depth":trial.suggest_int("max_depth", 1, 20),
+            "colsample_bytree":trial.suggest_float("colsample_bytree", 0.3, 1.0),
+            "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+            "max_bin": trial.suggest_int("max_bin", 200, 500)
         }
         X = train[num_f]
         y = np.log1p(train['y'])
 
-        model = xgb.XGBRegressor(**params_xgb)
+        model = lgb.LGBMRegressor(**param_lgb)
         loo = LeaveOneOut()
         scores = cross_val_score(model, X, y, cv=loo, scoring='neg_mean_squared_error')
         scores = np.sqrt(-scores)
-        print('CV scores for {0}: {1}'.format([i,scores]))
+        print(f'CV scores for {i}: {scores}')
         print('Mean score : ', np.mean(scores))
         rmsle_val = np.mean(scores)
      
         return rmsle_val
     
     sampler = TPESampler(seed=42)
-    study = optuna.create_study(
-    study_name="xgb_parameter_opt",
-    direction="minimize",
-    sampler=sampler,
-    )
-    study.optimize(objective, n_trials=30)
-    print("Best Score:", study.best_value)
-    print("Best trial:", study.best_trial.params)
+    study_lgb = optuna.create_study(
+                study_name="lgb_parameter_opt",
+                direction="minimize",
+                sampler=sampler,
+            )
+    study_lgb.optimize(objective_LGB, n_trials=5)
+    print("Best Score:", study_lgb.best_value)
+    print("Best trial:", study_lgb.best_trial.params)
+    lgb_score.append(study_lgb.best_value)
     
-    model = xgb.XGBRegressor(**study.best_params)
+    model = lgb.LGBMRegressor(**study_lgb.best_params)
     model.fit(train[num_f], np.log1p(train['y']))
+    print('{}th model training is completed'.format(i+1))
+    lgbs.append(model)
+    
+    
+** XGB **
+
+xgbs = []
+xgb_scores = []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_XGB(trial):
+        param = {
+            'booster':'gblinear',
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 1.0, log=True),
+            # L1 regularization weight.
+#             "reg_alpha": trial.suggest_float("alpha", 1e-8, 1.0, log=True),
+#             'colsample_bytree': trial.suggest_int('colsample_bytree', 0.3, 1.0),
+#             'subsample': trial.suggest_float('subsample', 0.3, 1.0),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.8),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 10000),
+#             'max_depth': trial.suggest_int("max_depth", 4, 12),
+            'random_state': 0,
+#             'min_child_weight': trial.suggest_int('min_child_weight', 1, 300),
+#             'tree_method':'exact'
+#             'tree_method':'gpu_hist',
+#             'gpu_id':'0'
+        }
+        
+#         if param["booster"] in ["gbtree", "dart"]:
+#         # maximum depth of the tree, signifies complexity of the tree.
+#             param["max_depth"] = trial.suggest_int("max_depth", 3, 12, step=2)
+#             # minimum child weight, larger the term more conservative the tree.
+#             param["min_child_weight"] = trial.suggest_int("min_child_weight", 2, 10)
+#             param["eta"] = trial.suggest_float("eta", 1e-8, 1.0, log=True)
+#             # defines how selective algorithm is.
+#             param["gamma"] = trial.suggest_float("gamma", 1e-8, 1.0, log=True)
+#             param["grow_policy"] = trial.suggest_categorical("grow_policy", ["depthwise", "lossguide"])
+
+#         if param["booster"] == "dart":
+#             param["sample_type"] = trial.suggest_categorical("sample_type", ["uniform", "weighted"])
+#             param["normalize_type"] = trial.suggest_categorical("normalize_type", ["tree", "forest"])
+#             param["rate_drop"] = trial.suggest_float("rate_drop", 1e-8, 1.0, log=True)
+#             param["skip_drop"] = trial.suggest_float("skip_drop", 1e-8, 1.0, log=True)
+        
+        
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = xgb.XGBRegressor(**param)
+        cv = KFold(5,shuffle=True, random_state=0)
+        scores = cross_val_score(model, X, y, cv=cv, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+     
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_xgb = optuna.create_study(
+            study_name="xgb_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+    )
+    study_xgb.optimize(objective_XGB, n_trials=5)
+    print("Best Score:", study_xgb.best_value)
+    print("Best trial:", study_xgb.best_trial.params)
+    xgb_score.append(study_xgb.best_value)
+    
+    model = xgb.XGBRegressor(**study_xgb.best_params)
+    model.fit(train[num_f], np.log1p(train['y']))
+    print('{}th model training is completed'.format(i+1))
     xgbs.append(model)
+
+
+** CAT **
+
+cats = []
+cat_scores= []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_CAT(trial):
+        param = {
+          "random_state":42,
+          'learning_rate' : trial.suggest_loguniform('learning_rate', 0.01, 0.5),
+          'bagging_temperature' :trial.suggest_loguniform('bagging_temperature', 0.01, 100.00),
+          "n_estimators":trial.suggest_int("n_estimators", 100, 10000),
+          "max_depth":trial.suggest_int("max_depth", 4, 12),
+          'random_strength' :trial.suggest_int('random_strength', 0, 30),
+          "colsample_bylevel":trial.suggest_float("colsample_bylevel", 0.4, 1.0),
+          "l2_leaf_reg":trial.suggest_float("l2_leaf_reg",0,10),
+          "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+          "max_bin": trial.suggest_int("max_bin", 200, 400),
+          'od_type': trial.suggest_categorical('od_type', ['IncToDec', 'Iter']),
+          'boosting_type':trial.suggest_categorical('boosting_type', ['Plain', 'Ordered']),
+#           'task_type':'GPU',
+#           'devices':'0:16',
+#           'iterations':100,
+#           'rsm':1
+        }
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = CatBoostRegressor(**param,loss_function='RMSE', eval_metric='RMSE')
+        loo = LeaveOneOut()
+        scores = cross_val_score(model, X, y, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_cat = optuna.create_study(
+            study_name="cat_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+            )
+    study_cat.optimize(objective_CAT, n_trials=5)
+    print("Best Score:", study_cat.best_value)
+    print("Best trial:", study_cat.best_trial.params)
+    cat_score.append(study_cat.best_value)
+    
+    model = CatBoostRegressor(**study_cat.best_params,
+                                loss_function='RMSE', eval_metric='RMSE',
+                                task_type='GPU',devices='0:16',rsm=1)
+    model.fit(train[num_f], np.log1p(train['y']))
+    print('{}th model training is completed'.format(i+1))
+    cats.append(model)
+
+
+** RIDGE **
+
+ridges = []
+ridge_score = []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_RIDGE(trial):
+        param = {
+          "random_state":42,
+            'alpha':trial.suggest_float("alpha",0.1,10),
+            'fit_intercept':trial.suggest_categorical('fit_intercept', [True, False]),
+            'normalize':trial.suggest_categorical('normalize', [True, False]),
+        }
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = Ridge(**param)
+        loo = LeaveOneOut()
+        
+        scores = cross_val_score(model, X, y, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_ridge = optuna.create_study(
+            study_name="ridge_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+            )
+    study_ridge.optimize(objective_RIDGE, n_trials=10)
+    print("Best Score:", study_ridge.best_value)
+    print("Best trial:", study_ridge.best_trial.params)
+    ridge_score.append(study_ridge.best_value)
+    
+    model = Ridge(**study_ridge.best_params)
+    model.fit(train[num_f], np.log1p(train['y']))
+    print('{} model training is completed'.format(i+1))
+    ridges.append(model)
+
+
+BAYESIANRIDGE
+
+brs = []
+br_scores = []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_BR(trial):
+        param = {
+            'n_iter':trial.suggest_int("n_iter",10,500),
+            'alpha_2':trial.suggest_uniform("alpha_2",-10,10),
+            'lambda_2' :trial.suggest_uniform('lambda_2', -10, 10),
+            'fit_intercept':trial.suggest_categorical('fit_intercept', [True, False]),
+            'normalize':trial.suggest_categorical('normalize', [True, False]),
+        }
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = BayesianRidge(**param)
+        loo = LeaveOneOut()
+
+        scores = cross_val_score(model, X, y, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_br = optuna.create_study(
+            study_name="BayesianRidge_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+            )
+    study_br.optimize(objective_BR, n_trials=10)
+    print("Best Score:", study_br.best_value)
+    print("Best trial:", study_br.best_trial.params)
+    br_scores.append()
+    
+    model = BayesianRidge(**study_br.best_params)
+    model.fit(train[num_f], np.log1p(train['y']))
+    print('{} model training is completed'.format(i+1))
+    brs.append(model)
+    
+    
+챔버별 최상의 CV SCORE 탐색 및 THRESHOLD 도출
+
+
+score_df = pd.DataFrame({'model':['lgb']*60 + ['xgb']*60 + ['cat']*60 + ['ridge']*60+['elasticnet']*60,
+                         'chamber': list(range(0,47))*5,
+                         'RMSLE' : lgb_scores + xgb_scores + cat_scores + ridge_scores + en_scores})
+
+fig = plt.figure(figsize = (10, 30))
+sns.barplot(data = score_df, orient = 'h', x = 'RMSLE', y = 'chamber', hue = 'model')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
     
     
