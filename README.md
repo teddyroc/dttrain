@@ -104,7 +104,7 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
     study_lgb.optimize(objective_LGB, n_trials=5)
     print("Best Score:", study_lgb.best_value)
     print("Best trial:", study_lgb.best_trial.params)
-    lgb_score.append(study_lgb.best_value)
+    lgb_scores.append(study_lgb.best_value)
     
     model = lgb.LGBMRegressor(**study_lgb.best_params)
     model.fit(train[num_f], np.log1p(train['y']))
@@ -174,7 +174,7 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
     study_xgb.optimize(objective_XGB, n_trials=5)
     print("Best Score:", study_xgb.best_value)
     print("Best trial:", study_xgb.best_trial.params)
-    xgb_score.append(study_xgb.best_value)
+    xgb_scores.append(study_xgb.best_value)
     
     model = xgb.XGBRegressor(**study_xgb.best_params)
     model.fit(train[num_f], np.log1p(train['y']))
@@ -228,7 +228,7 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
     study_cat.optimize(objective_CAT, n_trials=5)
     print("Best Score:", study_cat.best_value)
     print("Best trial:", study_cat.best_trial.params)
-    cat_score.append(study_cat.best_value)
+    cat_scores.append(study_cat.best_value)
     
     model = CatBoostRegressor(**study_cat.best_params,
                                 loss_function='RMSE', eval_metric='RMSE',
@@ -241,7 +241,7 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
 ** RIDGE **
 
 ridges = []
-ridge_score = []
+ridge_scores = []
 for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
     def objective_RIDGE(trial):
         param = {
@@ -273,7 +273,7 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
     study_ridge.optimize(objective_RIDGE, n_trials=10)
     print("Best Score:", study_ridge.best_value)
     print("Best trial:", study_ridge.best_trial.params)
-    ridge_score.append(study_ridge.best_value)
+    ridge_scores.append(study_ridge.best_value)
     
     model = Ridge(**study_ridge.best_params)
     model.fit(train[num_f], np.log1p(train['y']))
@@ -328,9 +328,9 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
 챔버별 최상의 CV SCORE 탐색 및 THRESHOLD 도출
 
 
-score_df = pd.DataFrame({'model':['lgb']*60 + ['xgb']*60 + ['cat']*60 + ['ridge']*60+['elasticnet']*60,
+score_df = pd.DataFrame({'model':['lgb']*60 + ['xgb']*60 + ['cat']*60 + ['ridge']*60+['br']*60,
                          'chamber': list(range(0,47))*5,
-                         'RMSLE' : lgb_scores + xgb_scores + cat_scores + ridge_scores + en_scores})
+                         'RMSLE' : lgb_scores + xgb_scores + cat_scores + ridge_scores + br_scores})
 
 fig = plt.figure(figsize = (10, 30))
 sns.barplot(data = score_df, orient = 'h', x = 'RMSLE', y = 'chamber', hue = 'model')
