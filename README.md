@@ -581,3 +581,45 @@ def good_models(score_df, pivot_q, threshold):
         best = list(temp[temp <= threshold*q].index)
         li.append(best)
     return li
+''' RandomForest '''
+rfs = []
+rf_scores = []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_RF(trial):
+        param = {
+            #"device_type": trial.suggest_categorical("device_type", ['gpu']),
+            "n_estimators": trial.suggest_int("n_estimators", 100,2000,step=10),
+            'max_depth': trial.suggest_int('max_depth', 3, 30),
+            'min_samples_split': trial.suggest_int('min_samples_split', 2, 50),
+            'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 30),
+            "random_state": trial.suggest_categorical("random_state", [2022]),
+        }
+        
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = RandomForestRegressor(**param)  
+        loo = LeaveOneOut()
+        scores = cross_val_score(model, X, y, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+     
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_rf = optuna.create_study(
+                study_name="rf_parameter_opt",
+                direction="minimize",
+                sampler=sampler,
+            )
+    study_rf.optimize(objective_RF, n_trials=5)
+    print("Best Score:", study_rf.best_value)
+    print("Best trial:", study_rf.best_trial.params)
+    rf_scores.append(study_rf.best_value)
+    
+    model = RandomForestRegressor(**study_rf.best_params)
+    model.fit(train[num_f], np.log1p(train['y']))
+    print('{}th model training is completed'.format(i+1))
+    rfs.append(model)
