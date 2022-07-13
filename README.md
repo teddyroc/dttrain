@@ -522,3 +522,62 @@ print("Best trial:", study.best_trial.params)
 
 ''' REGRESSION OVERSAMPLING 참고 '''
 dacon.io/competitions/official/235877/codeshare/4711
+
+
+'' 혹시 HUBERREGRESSOR ''
+hbs = []
+hb_scores = []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_HB(trial):
+        param = {
+            'epsilon':trial.suggest_float("epsilon",1.0,5.0),
+            'alpha':trial.suggest_float("alpha",0.0001,5)
+        }
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = HuberRegressor(**param)
+        loo = LeaveOneOut()
+
+        scores = cross_val_score(model, X, y, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_hb = optuna.create_study(
+            study_name="HB_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+            )
+    study_hb.optimize(objective_HB, n_trials=10)
+    print("Best Score:", study_hb.best_value)
+    print("Best trial:", study_hb.best_trial.params)
+    hb_scores.append(study_hb.best_value)
+    
+    model = HuberRegressor(**study_hb.best_params)
+    model.fit(train[num_f], np.log1p(train['y']))
+    print('{} model training is completed'.format(i+1))
+    hbs.append(model)
+    
+    
+
+세로줄긋기
+plt.axvline(0.005)
+
+
+최상의 cv score columns 변경해야함.
+# (건물 별 모델 cv score 의 pivot_q quantile 값*threshold) 보다 작은 cv score를 가진 모델만 건물별로 선택
+def good_models(score_df, pivot_q, threshold):
+    score_pivot = pd.DataFrame(score_df.pivot('chamber', 'model', 'RMSLE').values,
+                               columns = ['br','cat','en','lgb', 'ridge'])
+    li = []
+    for i in range(len(score_pivot)):
+        temp = score_pivot.iloc[i]
+        q = temp.quantile(pivot_q)
+        best = list(temp[temp <= threshold*q].index)
+        li.append(best)
+    return li
