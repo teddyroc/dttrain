@@ -518,3 +518,7 @@ study = optuna.create_study(
 study.optimize(objective_NGB, n_trials=10)
 print("Best Score:", study.best_value)
 print("Best trial:", study.best_trial.params)
+
+
+''' REGRESSION OVERSAMPLING 참고 '''
+dacon.io/competitions/official/235877/codeshare/4711
