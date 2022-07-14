@@ -623,3 +623,74 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
     model.fit(train[num_f], np.log1p(train['y']))
     print('{}th model training is completed'.format(i+1))
     rfs.append(model)
+
+
+''' scaling 진행한 data 준비 '''
+module_unique = df_final['module_name'].unique()
+df_trains = [df_final[df_final['module_name']==eq] for eq in module_unique]
+df_predicts = [df_predict_final[df_predict_final['module_name']==eq] for eq in module_unique]
+df_trains_scaled = []
+df_predicts_scaled = []
+# num_features_lst = []
+
+''' 중복되는 열 제거하기. '''
+for i, (trains,predicts) in enumerate(zip(df_trains,df_predicts)):
+    drop_col = []
+    for para in for_col_filter:
+        col = trains.filter(regex='^'+para).columns.tolist()
+        duplicate_deleted_df = trains[col].T.drop_duplicates(subset=trains[col].T.columns, keep='first').T
+        if len(trains[col].columns.difference(duplicate_deleted_df.columns))==0:  # 다른게 없으면 무시,
+            continue
+        else:
+            drop_col.extend(trains[col].columns.difference(duplicate_deleted_df.columns).tolist())
+    trains.drop(drop_col,axis=1,inplace=True)
+    predicts.drop(drop_col, axis=1, inplace=True)
+    
+    var0_cols = trains.loc[:,trains.nunique()==1].columns.tolist()
+    print(f'module{i}의 drop할 columns : {var0_cols}')
+    trains.drop(var0_cols, axis=1, inplace=True)
+    predicts.drop(var0_cols, axis=1, inplace=True)
+    
+    ''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
+    num_features = list(trains.columns[trains.dtypes==float])
+    num_features.remove('y')
+    num_features_lst.append(num_features)
+    
+    scaler = StandardScaler()
+    scaled_trains = scaler.fit_transform(trains[num_features])
+    scaled_predicts = scaler.transform(predicts[num_features])
+    df_trains_scaled.append(scaled_trains)
+    df_predicts_scaled.append(scaled_predicts)
+    
+    df_trains[i] = trains
+    df_predicts[i] = predicts
+    
+#     ''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
+#     num_features = list(trains.columns[trains.dtypes==float])
+#     num_features.remove('y')
+#     num_features_lst.append(num_features)
+
+''' 오버샘플링 '''
+from imblearn.under_sampling import RandomUnderSampler
+
+    assert predicts[high_skew1_col].isnull().sum().sum() == 0
+    assert (predicts[high_skew1_col]==float('-inf')).sum().sum() == 0
+    assert (predicts[high_skew1_col]==float('inf')).sum().sum() == 0
+    
+    var0_cols = trains.loc[:,trains.nunique()==1].columns.tolist()
+    print(f'module{i}의 drop할 columns : {var0_cols}')
+    trains.drop(var0_cols, axis=1, inplace=True)
+    predicts.drop(var0_cols, axis=1, inplace=True)
+    
+    df_trains[i] = trains
+    df_predicts[i] = predicts
+    
+    ''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
+    num_features = list(trains.columns[trains.dtypes==float])
+    num_features.remove('y')
+    num_features_lst.append(num_features)
+    
+    sampler = RandomUnderSampler(random_state=42)
+    X,y = trains = sampler.fit_resample(trains[num_features], trains['y'])
+    
+    이렇게 확인해야할듯 이후는  scaling 진행한 거와 동일하게 진행. 
