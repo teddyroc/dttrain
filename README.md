@@ -857,3 +857,43 @@ for i, (train, cols, y)in enumerate(zip(df_trains, modeling_col_lst,targets)):
     xgbs.append(model)
     
     
+ens = []
+en_scores = []
+for i, (train, cols, y)in enumerate(zip(df_trains_scaled, modeling_col_lst, targets)):
+    def objective_en(trial):
+        param = {
+            'alpha':trial.suggest_float("alpha",1e-2,20),
+            'fit_intercept':trial.suggest_categorical('fit_intercept', [True, False]),
+            'normalize':trial.suggest_categorical('normalize', [True, False]),
+            'tol':trial.suggest_float("tol",1e-6,1e-2),
+            'selection':trial.suggest_categorical('selection', ['cyclic','random']),
+            'l1_ratio':trial.suggest_float("l1_ratio",1e-6,1.0)
+        }
+        X_en = train[cols]
+        y_en = np.log1p(y)
+
+        model = ElasticNet(**param, random_state=42)
+        loo = LeaveOneOut()
+        scores = cross_val_score(model, X_en, y_en, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_en = optuna.create_study(
+            study_name="en_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+    )
+    study_en.optimize(objective_en, n_trials=30)
+    print("Best Score:", study_en.best_value)
+    print("Best trial:", study_en.best_trial.params)
+    en_scores.append(study_en.best_value)
+    
+    model = ElasticNet(**study_en.best_params, random_state=42)
+    model.fit(train[cols], np.log1p(y))
+    print('{} model training is completed'.format(i))
+    ens.append(model)
