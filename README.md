@@ -987,3 +987,32 @@ for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
     model.fit(train[num_f], np.log1p(train['y']))
     print('{}th model training is completed'.format(i+1))
     ngbs.append(model)
+ ens 
+param = {
+            'alpha':trial.suggest_float("alpha",1e-4,20),
+            'fit_intercept':trial.suggest_categorical('fit_intercept', [True, False]),
+            'normalize':trial.suggest_categorical('normalize', [True, False]),
+            'tol':trial.suggest_float("tol",1e-6,1e-2),
+            'selection':trial.suggest_categorical('selection', ['cyclic','random']),
+            'l1_ratio':trial.suggest_float("l1_ratio",1e-6,1.0)
+        }
+ ridge       
+param = {
+          "random_state":42,
+            'alpha':trial.suggest_float("alpha",0.1,10),
+            'fit_intercept':trial.suggest_categorical('fit_intercept', [True, False]),
+            'normalize':trial.suggest_categorical('normalize', [True, False]),
+        }     
+        
+        
+br
+def objective_BR(trial):
+        param = {
+            'n_iter':trial.suggest_int("n_iter",10,1000),
+            'alpha_2':trial.suggest_float("alpha_2",1e-6, 20),
+            'lambda_2' :trial.suggest_float('lambda_2', 1e-6, 20),
+            'fit_intercept':trial.suggest_categorical('fit_intercept', [True, False]),
+            'normalize':trial.suggest_categorical('normalize', [True, False]),
+            'tol':trial.suggest_float("tol",1e-6,1e-2)
+        }
+        
