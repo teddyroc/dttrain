@@ -897,3 +897,44 @@ for i, (train, cols, y)in enumerate(zip(df_trains_scaled, modeling_col_lst, targ
     model.fit(train[cols], np.log1p(y))
     print('{} model training is completed'.format(i))
     ens.append(model)
+
+
+hbs = []
+hb_scores = []
+for i, (train, cols, y)in enumerate(zip(df_trains_scaled, modeling_col_lst, targets)):
+    def objective_HB(trial):
+        param = {
+            'epsilon':trial.suggest_float("epsilon",1.0,20.0),
+            'alpha':trial.suggest_float("alpha",1e-4,20),
+            'fit_intercept':trial.suggest_categorical('fit_intercept', [True, False]),
+            'tol':trial.suggest_float("tol",1e-6,1e-2),
+            'max_iter':1000
+        }
+        X_hb = train[cols]
+        y_hb = np.log1p(y)
+
+        model = HuberRegressor(**param, random_state=42)
+        loo = LeaveOneOut()
+        scores = cross_val_score(model, X_hb, y_hb, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_hb = optuna.create_study(
+            study_name="hb_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+    )
+    study_hb.optimize(objective_HB, n_trials=30)
+    print("Best Score:", study_hb.best_value)
+    print("Best trial:", study_hb.best_trial.params)
+    hb_scores.append(study_hb.best_value)
+    
+    model = ElasticNet(**study_en.best_params, random_state=42)
+    model.fit(train[cols], np.log1p(y))
+    print('{} model training is completed'.format(i))
+    hbs.append(model)
