@@ -694,3 +694,166 @@ from imblearn.under_sampling import RandomUnderSampler
     X,y = trains = sampler.fit_resample(trains[num_features], trains['y'])
     
     이렇게 확인해야할듯 이후는  scaling 진행한 거와 동일하게 진행. 
+    
+    
+    
+    
+    
+    
+    ''' 챔버별 모델링 '''
+df_final = df_train.copy()
+df_predict_final = df_predict.copy()
+
+module_unique = df_final['module_name'].unique()
+df_trains = [df_final[df_final['module_name']==eq] for eq in module_unique]
+df_predicts = [df_predict_final[df_predict_final['module_name']==eq] for eq in module_unique]
+df_trains_scaled = []
+df_predicts_scaled = []
+modeling_col_lst = []
+targets = []
+
+''' 중복되는 열 제거하기. '''
+for i, (trains,predicts) in enumerate(zip(df_trains,df_predicts)):
+    drop_col = []
+    for para in for_col_filter:
+        col = trains.filter(regex='^'+para).columns.tolist()
+        if col:
+            duplicate_deleted_df = trains[col].T.drop_duplicates(subset=trains[col].T.columns, keep='first').T
+            if len(trains[col].columns.difference(duplicate_deleted_df.columns))==0:  # 다른게 없으면 무시,
+                continue
+            else:
+                drop_col.extend(trains[col].columns.difference(duplicate_deleted_df.columns).tolist())
+        else:
+            continue
+    trains.drop(drop_col,axis=1,inplace=True)
+    predicts.drop(drop_col, axis=1, inplace=True)
+    
+    var0_cols = trains.loc[:,trains.nunique()==1].columns.tolist()
+    print(f'module{i}의 drop할 columns : {var0_cols}')
+    trains.drop(var0_cols, axis=1, inplace=True)
+    predicts.drop(var0_cols, axis=1, inplace=True)
+    
+    ''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
+    num_features = list(trains.columns[trains.dtypes==float])
+    targets.append(pd.Series(trains['y']))
+    num_features.remove('y')
+    test_date_features = trains.columns[trains.dtypes==np.int64].tolist()
+    COLS = test_date_features + num_features
+    modeling_col_lst.append(COLS)
+    
+    scaler = StandardScaler()
+    trains.loc[:, num_features] = scaler.fit_transform(trains[num_features])
+    predicts.loc[:, num_features] = scaler.transform(predicts[num_features])
+    df_trains_scaled.append(trains)
+    df_predicts_scaled.append(predicts)
+    
+    df_trains[i] = trains
+    df_predicts[i] = predicts
+    
+#     ''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
+#     num_features = list(trains.columns[trains.dtypes==float])
+#     num_features.remove('y')
+#     num_features_lst.append(num_features)
+
+lgbs = []
+lgb_scores = []
+for i, (train, cols, y)in enumerate(zip(df_trains, modeling_col_lst,targets)):
+    def objective_LGB(trial):
+        param_lgb = {
+            'objective':'regression',
+            'metric':'rmse',
+            "random_state":42,
+            'learning_rate' : trial.suggest_float('learning_rate', 0.01, 0.7),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 4e-5),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
+            'bagging_fraction' :trial.suggest_loguniform('bagging_fraction', 0.01, 1.0),
+            "n_estimators":trial.suggest_int("n_estimators", 100, 1000),
+            "max_depth":trial.suggest_int("n_estimators", 3, 12),
+            "colsample_bytree":trial.suggest_float("colsample_bytree", 0.3, 1.0),
+            "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+            "max_bin": trial.suggest_int("max_bin", 200, 500)
+        }
+        X_lgb = train[cols]
+        y_lgb = np.log1p(y)
+
+        model = lgb.LGBMRegressor(**param_lgb)
+        loo = LeaveOneOut()
+        scores = cross_val_score(model, X_lgb, y_lgb, cv=loo, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+     
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_lgb = optuna.create_study(
+                study_name="lgb_parameter_opt",
+                direction="minimize",
+                sampler=sampler,
+            )
+    study_lgb.optimize(objective_LGB, n_trials=3)
+    print("Best Score:", study_lgb.best_value)
+    print("Best trial:", study_lgb.best_trial.params)
+    lgb_scores.append(study_lgb.best_value)
+    
+    model = lgb.LGBMRegressor(**study_lgb.best_params)
+    model.fit(train[cols], np.log1p(y))
+    print('{}th model training is completed'.format(i+1))
+    lgbs.append(model)
+    
+xgbs = []
+xgb_scores = []
+for i, (train, cols, y)in enumerate(zip(df_trains, modeling_col_lst,targets)):
+    def objective_XGB(trial):
+        param = {
+            'booster': 'gbtree',
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
+#             "alpha": trial.suggest_float("alpha", 1e-8, 1.0, log=True),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 10000),
+            'random_state': 0,
+#             "tree_method": "gpu_hist",
+#             'gpu_id':'0',
+            # maximum depth of the tree, signifies complexity of the tree.
+            "max_depth": trial.suggest_int("max_depth", 3, 12, step=2),
+            # minimum child weight, larger the term more conservative the tree.
+            "min_child_weight": trial.suggest_int("min_child_weight", 2, 10),
+            "eta": trial.suggest_float("eta", 0.01, 0.8),
+            # defines how selective algorithm is.
+            "gamma": trial.suggest_float("gamma", 1e-8, 1.0, log=True),
+            "grow_policy": trial.suggest_categorical("grow_policy", ["depthwise", "lossguide"]),
+            'colsample_bytree': trial.suggest_int('colsample_bytree', 0.3, 1.0)
+        
+    }
+        
+        
+        X_xgb = train[cols]
+        y_xgb = np.log1p(y)
+
+        model = xgb.XGBRegressor(**param)
+        cv = KFold(5,shuffle=True, random_state=0)
+        scores = cross_val_score(model, X_xgb, y_xgb, cv=cv, scoring='neg_mean_squared_error')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+     
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_xgb = optuna.create_study(
+            study_name="xgb_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+    )
+    study_xgb.optimize(objective_XGB, n_trials=5)
+    print("Best Score:", study_xgb.best_value)
+    print("Best trial:", study_xgb.best_trial.params)
+    xgb_scores.append(study_xgb.best_value)
+    
+    model = xgb.XGBRegressor(**study_xgb.best_params)
+    model.fit(train[cols], np.log1p(y))
+    print('{}th model training is completed'.format(i+1))
+    xgbs.append(model)
+    
+    
