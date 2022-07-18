@@ -938,3 +938,52 @@ for i, (train, cols, y)in enumerate(zip(df_trains_scaled, modeling_col_lst, targ
     model.fit(train[cols], np.log1p(y))
     print('{} model training is completed'.format(i))
     hbs.append(model)
+
+
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
+from ngboost import NGBRegressor
+from ngboost.learners import default_tree_learner
+from ngboost.distns import Normal
+from ngboost.scores import MLE, CRPS
+
+ngbs = []
+ngb_scores= []
+for i, (train, num_f) in enumerate(zip(df_trains, num_features_lst)):
+    def objective_NGB(trial):
+        param = {
+            "random_state":42,
+#             'learning_rate' : trial.suggest_float('learning_rate', 0.01, 0.5),
+            "n_estimators":trial.suggest_int("n_estimators", 100, 1000),
+            "col_sample":trial.suggest_float("col_sample", 0.2, 1.0),
+            'natural_gradient':trial.suggest_categorical("natural_gradient", [True,False]),
+            'verbose_eval':trial.suggest_int("verbose_eval", 10, 100)
+        }
+        X = train[num_f]
+        y = np.log1p(train['y'])
+
+        model = NGBRegressor(Base=default_tree_learner, Dist=Normal,Score=MLE, **param)
+        cv = KFold(5, shuffle=True, random_state=0)
+        scores = cross_val_score(model, X, y, cv=cv, scoring='neg_mean_squared_error', error_score='raise')
+        scores = np.sqrt(-scores)
+        print(f'CV scores for {i}: {scores}')
+        print('Mean score : ', np.mean(scores))
+        rmsle_val = np.mean(scores)
+
+        return rmsle_val
+    
+    sampler = TPESampler(seed=42)
+    study_ngb = optuna.create_study(
+            study_name="ngb_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+            )
+    study_ngb.optimize(objective_NGB, n_trials=10)
+    print("Best Score:", study_ngb.best_value)
+    print("Best trial:", study_ngb.best_trial.params)
+    ngb_scores.append(study_ngb.best_value)
+    
+    model = NGBRegressor(Base=default_tree_learner, Dist=Normal,Score=MLE,**study_ngb.best_params)
+    model.fit(train[num_f], np.log1p(train['y']))
+    print('{}th model training is completed'.format(i+1))
+    ngbs.append(model)
