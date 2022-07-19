@@ -1016,3 +1016,155 @@ def objective_BR(trial):
             'tol':trial.suggest_float("tol",1e-6,1e-2)
         }
         
+
+
+
+
+
+
+바꿀꺼
+
+''' Cyclic Transformation 적용 '''
+def cyclic_transformation(df, cols):
+    for col in cols:
+        step = col[:2]
+        df[col] = pd.to_datetime(df[col])
+        df[step+'_'+'month'] = df[col].dt.month
+        df[step+'_'+'day'] = df[col].dt.day
+        df[step+'_'+'hour'] = df[col].dt.hour
+        df[step+'_'+'minute'] = df[col].dt.minute
+        df[step+'_'+'weekday'] = df[col].dt.weekday
+        
+        ## cyclic transformation on hour
+        df[step+'_'+'hour_sin'] = np.sin(2 * np.pi * df[step+'_'+'hour']/23.0)
+        df[step+'_'+'hour_cos'] = np.cos(2 * np.pi * df[step+'_'+'hour']/23.0)
+        ## cyclic transformation on date 
+        df[step+'_'+'date_sin'] = -np.sin(2 * np.pi * (df[step+'_'+'month']+df[step+'_'+'day']/31)/12)
+        df[step+'_'+'date_cos'] = -np.cos(2 * np.pi * (df[step+'_'+'month']+df[step+'_'+'day']/31)/12)
+        ## cyclic transformation on month
+        df[step+'_'+'month_sin'] = -np.sin(2 * np.pi * df[step+'_'+'month']/12.0)
+        df[step+'_'+'month_cos'] = -np.cos(2 * np.pi * df[step+'_'+'month']/12.0)
+        ## cyclic transformation on weekday
+        df[step+'_'+'weekday_sin'] = -np.sin(2 * np.pi * (df[step+'_'+'weekday']+1)/7.0)
+        df[step+'_'+'weekday_cos'] = -np.cos(2 * np.pi * (df[step+'_'+'weekday']+1)/7.0)
+        
+        df.drop(step+'_'+'month',axis=1,inplace=True)
+        df.drop(step+'_'+'month_sin',axis=1,inplace=True)
+        df.drop(step+'_'+'month_cos',axis=1,inplace=True)
+        
+two_trend_para = ['06_epd_para4','20_epd_para4','04_hv_para45','04_hv_para47','04_hv_para56','06_power_para57']
+
+df_train['06_epd_para4_test'] = df_train['06_epd_para4'].apply(lambda x: 1 if x > 50 else 0)
+df_train['20_epd_para4_test'] = df_train['20_epd_para4'].apply(lambda x: 1 if x < 900 else 0)
+df_train['04_hv_para45_test'] = df_train['04_hv_para45'].apply(lambda x: 1 if x < 150 else 0)
+df_train['04_hv_para47_test'] = df_train['04_hv_para47'].apply(lambda x: 1 if x < 100 else 0)
+df_train['04_hv_para56_test'] = df_train['04_hv_para56'].apply(lambda x: 1 if x < 0.15 else 0)
+df_train['06_power_para57_test'] = df_train['06_power_para57'].apply(lambda x: 1 if x > 2300 else 0)
+df_train['06_power_para76_test'] = df_train['06_power_para76'].apply(lambda x: 1 if x > 1600 else 0)
+
+df_predict['06_epd_para4_test'] = df_predict['06_epd_para4'].apply(lambda x: 1 if x > 50 else 0)
+df_predict['20_epd_para4_test'] = df_predict['20_epd_para4'].apply(lambda x: 1 if x < 900 else 0)
+df_predict['04_hv_para45_test'] = df_predict['04_hv_para45'].apply(lambda x: 1 if x < 150 else 0)
+df_predict['04_hv_para47_test'] = df_predict['04_hv_para47'].apply(lambda x: 1 if x < 100 else 0)
+df_predict['04_hv_para56_test'] = df_predict['04_hv_para56'].apply(lambda x: 1 if x < 0.15 else 0)
+df_predict['06_power_para57_test'] = df_predict['06_power_para57'].apply(lambda x: 1 if x > 2300 else 0)
+df_predict['06_power_para76_test'] = df_predict['06_power_para76'].apply(lambda x: 1 if x > 1600 else 0)
+
+''' 5000 이상은 1, 아래는 0으로인코딩 '''
+time_5000 = ['time para16','time_para42','time_para43','time_para44','time_para62','time_para75','time_para77','time_para89']
+for col in time_5000:
+    col_ = df_train.filter(regex=col+'$').columns.tolist()
+    for column in col_:
+        df_train[column+'_test'] = df_train[column].apply(lambda x: 1 if x>5000 else 0)
+        df_predict[column+'_test'] = df_predict[column].apply(lambda x: 1 if x>5000 else 0)
+''' 125 이상은 0, 아래는 1로 인코딩 '''
+time_125 = ['12_time_para5','13_time_para5','17_time_para5','18_time_para5']
+for col in time_125:
+    df_train[col+'_test'] = df_train[col].apply(lambda x: 1 if x <125 else 0)
+    df_predict[col+'_test'] = df_predict[col].apply(lambda x: 1 if x <125 else 0)
+''' 3500 이상은 1 아래는 0 '''
+for col in df_train.filter(regex='time_para67$').columns.tolist():
+    df_train[col+'_test'] = df_train[col].apply(lambda x: 1 if x >= 3500 else 0)
+    df_predict[col+'_test'] = df_predict[col].apply(lambda x: 1 if x >= 3500 else 0)
+    
+''' 2.6 이상 1, 아래 0 '''
+'04_tmp_para31'
+df_train['04_tmp_para31_test'] = df_train['04_tmp_para31'].apply(lambda x: 1 if x >=2.6 else 0)
+df_predict['04_tmp_para31_test'] = df_predict['04_tmp_para31'].apply(lambda x: 1 if x >=2.6 else 0)
+''' 2.8 이상 1, 아래 0 '''
+'06_tmp_para31'
+df_train['06_tmp_para31_test'] = df_train['06_tmp_para31'].apply(lambda x: 1 if x >=2.8 else 0)
+df_predict['06_tmp_para31_test'] = df_predict['06_tmp_para31'].apply(lambda x: 1 if x >=2.8 else 0)
+''' 4.0 이상 1, 아래 0 '''
+tmp_4 = ['12_tmp_para31','13_tmp_para31','17_tmp_para31','18_tmp_para31','20_tmp_para31']
+for col in tmp_4:
+    df_train[col+'_test'] = df_train[col].apply(lambda x: 1 if x>=4.0 else 0)
+    df_predict[col+'_test'] = df_predict[col].apply(lambda x: 1 if x>=4.0 else 0)
+    
+df_final = df_train.copy()
+df_predict_final = df_predict.copy()
+
+module_unique = df_final['module_name'].unique()
+df_trains = [df_final[df_final['module_name']==eq] for eq in module_unique]
+num_features_lst = []
+df_predicts = [df_predict_final[df_predict_final['module_name']==eq] for eq in module_unique]
+''' 중복되는 열 제거하기. '''
+for i, (trains,predicts) in enumerate(zip(df_trains,df_predicts)):
+    drop_col = []
+    for para in for_col_filter:
+        col = trains.filter(regex='^'+para).columns.tolist()
+        duplicate_deleted_df = trains[col].T.drop_duplicates(subset=trains[col].T.columns, keep='first').T
+        if len(trains[col].columns.difference(duplicate_deleted_df.columns))==0:  # 다른게 없으면 무시,
+            continue
+        else:
+            drop_col.extend(trains[col].columns.difference(duplicate_deleted_df.columns).tolist())
+    
+    # 새로 생성한 TEST COLUMNS 전처리
+#     test_col = trains.filter(regex='test$').columns.tolist()
+#     duplicate_deleted_test_df = trains[test_col].T.drop_duplicates(subset=trains[test_col].T.columns, keep='first').T
+#     if len(trains[test_col].columns.difference(duplicate_deleted_test_df.columns))!=0:
+#         drop_col.extend(trains[test_col].columns.difference(duplicate_deleted_test_df.columns).tolist())
+    
+    trains.drop(drop_col,axis=1,inplace=True)
+    predicts.drop(drop_col, axis=1, inplace=True)
+    
+#     ''' 1부터도 log transformation시 skewness와 kurtois가 많이 줄어듦. 효과적일 것이라 변환진행 ex) '20_time_para42' '''
+#     skew1_df = ((trains.skew()>=2.5)|(trains.skew()<=-2.5)).reset_index().iloc[1:].reset_index(drop=True)
+#     skew1_df.columns=['param','boolean']
+#     high_skew1_col = skew1_df.loc[skew1_df['boolean'],:]['param'].unique().tolist()
+#     df = trains[high_skew1_col]
+#     ''' 04_fr_para28 , 06_fr_para28 음수를 가진 col인데, skew는 높지만 시각화시 괜찮아서 제외. '''
+    
+#     minus_col = df[(np.log1p(df).isnull())|(np.log1p(df)==float('-inf'))].dropna(axis=1,how='any').columns.tolist()
+#     high_skew1_col = [x for x in high_skew1_col if x not in minus_col]
+#     print(len(high_skew1_col))
+
+#     trains[high_skew1_col] = np.log1p(trains[high_skew1_col])
+#     predicts[high_skew1_col] = np.log1p(predicts[high_skew1_col])
+    
+#     assert predicts[high_skew1_col].isnull().sum().sum() == 0
+#     assert (predicts[high_skew1_col]==float('-inf')).sum().sum() == 0
+#     assert (predicts[high_skew1_col]==float('inf')).sum().sum() == 0
+    
+    var0_cols = trains.loc[:,trains.nunique()==1].columns.tolist()
+    print(f'module{i}의 drop할 columns : {var0_cols}')
+    trains.drop(var0_cols, axis=1, inplace=True)
+    predicts.drop(var0_cols, axis=1, inplace=True)
+    
+    num_features = list(trains.columns[trains.dtypes==float])
+    num_features.remove('y')
+    scaler = StandardScaler()
+    trains.loc[:, num_features] = scaler.fit_transform(trains[num_features])
+    predicts.loc[:, num_features] = scaler.transform(predicts[num_features])
+    
+    df_trains[i] = trains
+    df_predicts[i] = predicts
+    
+    ''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
+    num_features = list(trains.columns[trains.dtypes==float])
+#     test_cols = trains.filter(regex='test$').columns.tolist()
+    num_features.remove('y')
+#     num_features_lst.append(num_features+test_cols)
+    num_features_lst.append(num_features)
+    
+    
