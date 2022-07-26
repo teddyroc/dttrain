@@ -65,12 +65,13 @@ GAS_COL = df_train.filter(regex='gas').columns.tolist()
 GAS_COL = [col for col in GAS_COL if col not in ROUND2_GAS_COL]
 df_train.drop(GAS_COL, axis=1, inplace=True)
 
-TEMP 전처리
+# TEMP 전처리
 temp_ = []
 for para in df_train.filter(regex='temp').columns.tolist():
     temp_.append(para.split('_')[1]+'_'+para.split('_')[2])
 temp_ = sorted(list(set(temp_)))
 
+'''시각화'''
 for filterp in temp_:
     paras = df_train.filter(regex=filterp+'$').columns.tolist()
     n_cols = len(paras)
@@ -91,6 +92,8 @@ for col in ALL_DROP:
     cols = df_train.filter(regex=col+'$').columns.tolist()
     df_train.drop(cols,axis=1,inplace=True)
     df_predict.drop(cols,axis=1,inplace=True)
+
+# time_para66이 1도정도 한챔버가 튀었는데, 삭제할지 말지, 처음엔 삭제안한게 더 높았는데, 모델수정 후에는 삭제한게 더 높다.
     
 TIME PARA 전처리
 df = df_train.filter(regex='time').drop(df_train.filter(regex='end_time$').columns.tolist(), axis=1)
