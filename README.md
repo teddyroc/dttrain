@@ -1,4 +1,4 @@
-0726 통데이터로 돌리기
+0727 최신
 # 전체 및 개별 공정 소요시간 변수를 생성하는 함수입니다.
 def gen_tmdiff(df, lst_stepsgap):
     df['gen_tmdiff'] = (df['20_end_time'] - df['04_end_time']).dt.total_seconds()
@@ -6,182 +6,87 @@ def gen_tmdiff(df, lst_stepsgap):
         df[f'gen_tmdiff_{stepgap}'] = (df[f'{stepgap[2:]}_end_time'] - df[f'{stepgap[:2]}_end_time']).dt.total_seconds()
     return df
     
-lst_steps 까지 처리후
 df_train = gen_tmdiff(df_train, lst_stepsgap)
 df_predict = gen_tmdiff(df_predict, lst_stepsgap)
 df_train.filter(regex='tmdiff').head(2)
 
-df_train.drop(['gen_tmdiff_1213','gen_tmdiff_1718'], axis=1, inplace=True)
-df_predict.drop(['gen_tmdiff_1213','gen_tmdiff_1718'], axis=1, inplace=True)
+FR 전처리
+PARA28_COLS = df_train.filter(regex='fr_para28$').columns.tolist()
+PARA28_COLS = [col for col in PARA28_COLS if col not in ['18_fr_para28']]
+PARA69_COLS = df_train.filter(regex='fr_para69$').columns.tolist()
+PARA69_COLS = [col for col in PARA69_COLS if col not in ['06_fr_para69','13_fr_para69','18_fr_para69']]
+df_train.drop(PARA28_COLS+PARA69_COLS+['04_fr_para35','06_fr_para35'], axis=1, inplace=True)
 
-for_col_filter = []
-for para in sensors_nm:
-    for_col_filter.append(para.split('_')[0])
-for_col_filter = list(set(for_col_filter))
-for_col_filter
+HV 전처리
+TMP 전처리
+POSITION 전처리
+PRESSURE 전처리
 
-# 챔버인코딩 후
+ESC 전처리
+PARA84_COLS = df_train.filter(regex='esc_para84$').columns.tolist()
+PARA84_COLS = [col for col in PARA84_COLS if col not in ['04_esc_para84','13_esc_para84','18_esc_para84']]
+df_train.drop(PARA84_COLS, axis=1, inplace=True)
+df_predict.drop(PARA84_COLS, axis=1, inplace=True)
 
-# 우선 단일 columns 제거.
-unique_col = df_train.loc[:,df_train.nunique()==1].columns.tolist()
-df_train.drop(unique_col, axis=1, inplace=True)
-df_predict.drop(unique_col, axis=1, inplace=True)
+POWER 전처리
+PWR_PARA68 = df_train.filter(regex='power_para68$').columns.tolist()
+PWR_PARA57 = df_train.filter(regex='04_power_para57$').columns.tolist()
+# PWR_PARA82 = df_train.filter(regex='power_para82$').columns.tolist()
+# PWR_PARA49 = df_train.filter(regex='power_para49$').columns.tolist()
+DROP_PWR = PWR_PARA68+PWR_PARA57
 
-EFEM 삭제
-efem_cols = df_train.filter(regex='efem').columns.tolist()
-df_train.drop(efem_cols, axis=1, inplace=True)
-df_predict.drop(efem_cols, axis=1, inplace=True)
+df_train.drop(DROP_PWR, axis=1, inplace=True)
+df_predict.drop(DROP_PWR, axis=1, inplace=True)
 
+HE 전처리
+HE_PARA95 = df_train.filter(regex='he_para95$').columns.tolist()
+df_train.drop(HE_PARA95, axis=1, inplace=True)
+df_predict.drop(HE_PARA95, axis=1, inplace=True)
 
 GAS 전처리
-gas_ = []
-for para in df_train.filter(regex='gas').columns.tolist():
-    gas_.append(para.split('_')[1]+'_'+para.split('_')[2])
-gas_ = sorted(list(set(gas_)))
+''' drop해야 하는 애들 '''
+# all step
+DROP_ALL = ['gas_para10','gas_para19','gas_para48','gas_para70']
+for para in DROP_ALL:
+    df_train.drop(df_train.filter(regex=para+'$').columns.tolist(),axis=1, inplace=True)
+    
+GAS_PARA13 = ['12_gas_para13','17_gas_para13','20_gas_para13']
+GAS_PARA15 = df_train.filter(regex='gas_para15$').columns.tolist()
+GAS_PARA15 = [col for col in GAS_PARA15 if col not in ['04_gas_para15']]
+GAS_PARA27 = ['04_gas_para27','06_gas_para27','20_gas_para27']
+# GAS_PARA33 = df_train.filter(regex='gas_para33$').columns.tolist()   애매하다,
+# GAS_PARA33 = [col for col in GAS_PARA33 if col not in ['20_gas_para33']]
+GAS_PARA39 = df_train.filter(regex='gas_para39$').columns.tolist()
+GAS_PARA39 = [col for col in GAS_PARA39 if col not in ['20_gas_para39']]
+GAS_PARA46 = ['04_gas_para46','06_gas_para46','06_gas_para46']
+GAS_PARA50 = df_train.filter(regex='gas_para50$').columns.tolist()
+GAS_PARA50 = [col for col in GAS_PARA50 if col not in ['20_gas_para50']]
+GAS_PARA51 = ['06_gas_para51','12_gas_para51','17_gas_para51','20_gas_para51']
+GAS_PARA59 = ['04_gas_para59']
+GAS_PARA71 = df_train.filter(regex='gas_para71$').columns.tolist()
+GAS_PARA71 = [col for col in GAS_PARA71 if col not in ['06_gas_para71']]
+GAS_PARA74 = ['06_gas_para74','13_gas_para74','18_gas_para74','20_gas_para74']
+GAS_PARA85 = df_train.filter(regex='gas_para85$').columns.tolist()
+GAS_PARA85 = [col for col in GAS_PARA85 if col not in ['04_gas_para85']]
 
-시각화
-for filterp in gas_:
-    paras = df_train.filter(regex=filterp+'$').columns.tolist()
-    n_cols = len(paras)
-    fig = plt.figure(figsize=(20,4*n_cols))
-    for i,para in enumerate(paras):
-        fig = plt.figure(figsize=(20,3*n_cols))
-        plt.subplot(n_cols, 1, i+1)
-        sns.lineplot(data = df_train, x= para[:2]+'_end_time', y = para, hue='module_name', linewidth = 2, legend=False)
-        plt.title(f'{para.upper()}')
-#         plt.subplots_adjust(hspace = 1.0)
-        plt.ylabel('')
-        plt.xlabel('')
-        plt.show()
-#         print(f'{para.upper()}의 세정 전 RF TIME : {df_train[para].max()}')
+GAS_DROP_COL = GAS_PARA13+GAS_PARA15+GAS_PARA27+GAS_PARA39+GAS_PARA46+GAS_PARA50+GAS_PARA51+GAS_PARA59+GAS_PARA71+GAS_PARA74+GAS_PARA85
 
-# all step 사용하는 gas
-PARA21_COL = df_train.filter(regex='gas_para21$').columns.tolist()
-PARA36_COL = df_train.filter(regex='gas_para36$').columns.tolist()
-PARA6_COL = df_train.filter(regex='gas_para6$').columns.tolist()
-ROUND2_GAS_COL = PARA21_COL+PARA36_COL+PARA6_COL+['20_gas_para39','13_gas_para46','18_gas_para46','04_gas_para51']
+df_train.drop(GAS_DROP_COL, axis=1, inplace=True)
+df_predict.drop(GAS_DROP_COL, axis=1, inplace=True)
 
-GAS_COL = df_train.filter(regex='gas').columns.tolist()
-GAS_COL = [col for col in GAS_COL if col not in ROUND2_GAS_COL]
-df_train.drop(GAS_COL, axis=1, inplace=True)
-
-# TEMP 전처리
-temp_ = []
-for para in df_train.filter(regex='temp').columns.tolist():
-    temp_.append(para.split('_')[1]+'_'+para.split('_')[2])
-temp_ = sorted(list(set(temp_)))
-
-'''시각화'''
-for filterp in temp_:
-    paras = df_train.filter(regex=filterp+'$').columns.tolist()
-    n_cols = len(paras)
-    fig = plt.figure(figsize=(20,4*n_cols))
-    for i,para in enumerate(paras):
-        fig = plt.figure(figsize=(20,3*n_cols))
-        plt.subplot(n_cols, 1, i+1)
-        sns.lineplot(data = df_train, x= para[:2]+'_end_time', y = para, hue='module_name', linewidth = 2, legend=False, marker='o')
-        plt.title(f'{para.upper()}')
-#         plt.subplots_adjust(hspace = 1.0)
-        plt.ylabel('')
-        plt.xlabel('')
-        plt.show()
-#         print(f'{para.upper()}의 세정 전 RF TIME : {df_train[para].max()}')
-
-ALL_DROP = ['temp_para11', 'temp_para23', 'temp_para32', 'temp_para53', 'temp_para55', 'temp_para79', 'temp_para87', 'temp_para92', 'temp_para93','04_temp_para17', '06_temp_para17']
-for col in ALL_DROP:
+TEMP 전처리
+DROP_TEMP = ['temp_para11', '06_temp_para53','20_temp_para53', 'temp_para79', '20_temp_para87', '06_temp_para93','20_temp_para93', '04_temp_para17', '06_temp_para17']
+for col in DROP_TEMP:
     cols = df_train.filter(regex=col+'$').columns.tolist()
     df_train.drop(cols,axis=1,inplace=True)
     df_predict.drop(cols,axis=1,inplace=True)
-
-# time_para66이 1도정도 한챔버가 튀었는데, 삭제할지 말지, 처음엔 삭제안한게 더 높았는데, 모델수정 후에는 삭제한게 더 높다.
     
-TIME PARA 전처리
-df = df_train.filter(regex='time').drop(df_train.filter(regex='end_time$').columns.tolist(), axis=1)
-time_para = []
-for col in df.columns:
-    time_para.append(col[3:])
-time_para = sorted(list(set(time_para)))
-time_para.remove('time_para5')    # 나중에 처리.
+TIME 전처리
+CLN COL 추가
 
-for filterp in time_para:
-    paras = df.filter(regex=filterp+'$').columns.tolist()
-    n_cols = len(paras)
-    fig = plt.figure(figsize=(20,4*n_cols))
-    for i,para in enumerate(paras):
-        fig = plt.figure(figsize=(20,3*n_cols))
-        plt.subplot(n_cols, 1, i+1)
-        sns.lineplot(data = df_train, x= para[:2]+'_end_time', y = para, hue='module_name', linewidth = 2, legend=False)
-        plt.axhline(df_train[para].max(), color='r',linewidth=2)
-        plt.title(f'{para.upper()}')
-#         plt.subplots_adjust(hspace = 1.0)
-        plt.ylabel('')
-        plt.xlabel('')
-        plt.show()
-        print(f'{para.upper()}의 세정 전 RF TIME : {df_train[para].max()}')
-        
-# 우선 RF TIME이 쭉 떨어진 애들만 COL만들기
-for para in time_para:
-    col = f'04_{para}'
-    tmp_train = df_train.groupby('module_name')[col].shift(1).fillna(0)
-    tmp_predict = df_predict.groupby('module_name')[col].shift(1).fillna(0)
-    df_train[f'tmp_{para}'] = df_train[col]-tmp_train
-    df_predict[f'tmp_{para}'] = df_predict[col]-tmp_predict
-    df_train.loc[:, f'CLN_DAY_{para}'] = df_train[f'tmp_{para}'].apply(lambda x: 1 if x<=0 else 0)   # 전체 dataset에 대해서 처리돼있는 df,
-    df_predict.loc[:, f'CLN_DAY_{para}'] = df_predict[f'tmp_{para}'].apply(lambda x: 1 if x<=0 else 0)
-df_train.drop(df_train.filter(regex='^tmp').columns.tolist(), axis=1, inplace=True)
-df_predict.drop(df_predict.filter(regex='^tmp').columns.tolist(), axis=1, inplace=True)
+두줄 트렌드 TEST COL 추가
 
-print('CLN columns added to TRAIN DATASET : {}'.format(len(df_train.filter(regex='^CLN').columns)))
-print('CLN columns added to PREDICT DATASET: {}'.format(len(df_predict.filter(regex='^CLN').columns)))
-df_train.filter(regex='^CLN').head(3)
-
-# 두줄 트렌드 TEST COL 추가
-df_train['06_epd_para4_test'] = df_train['06_epd_para4'].apply(lambda x: 1 if x > 50 else 0)
-df_train['20_epd_para4_test'] = df_train['20_epd_para4'].apply(lambda x: 1 if x < 900 else 0)
-df_train['04_hv_para45_test'] = df_train['04_hv_para45'].apply(lambda x: 1 if x < 150 else 0)
-df_train['04_hv_para47_test'] = df_train['04_hv_para47'].apply(lambda x: 1 if x < 80 else 0)
-df_train['04_hv_para56_test'] = df_train['04_hv_para56'].apply(lambda x: 1 if x < 0.1 else 0)
-df_train['06_power_para57_test'] = df_train['06_power_para57'].apply(lambda x: 1 if x > 2250 else 0)
-df_train['06_power_para76_test'] = df_train['06_power_para76'].apply(lambda x: 1 if x > 1600 else 0)
-
-df_predict['06_epd_para4_test'] = df_predict['06_epd_para4'].apply(lambda x: 1 if x > 50 else 0)
-df_predict['20_epd_para4_test'] = df_predict['20_epd_para4'].apply(lambda x: 1 if x < 900 else 0)
-df_predict['04_hv_para45_test'] = df_predict['04_hv_para45'].apply(lambda x: 1 if x < 150 else 0)
-df_predict['04_hv_para47_test'] = df_predict['04_hv_para47'].apply(lambda x: 1 if x < 100 else 0)
-df_predict['04_hv_para56_test'] = df_predict['04_hv_para56'].apply(lambda x: 1 if x < 0.1 else 0)
-df_predict['06_power_para57_test'] = df_predict['06_power_para57'].apply(lambda x: 1 if x > 2300 else 0)
-df_predict['06_power_para76_test'] = df_predict['06_power_para76'].apply(lambda x: 1 if x > 1600 else 0)
-
-''' 5000 이상은 1, 아래는 0으로인코딩 '''
-time_5000 = ['time_para16','time_para42','time_para43','time_para44','time_para62','time_para75','time_para77','time_para89']
-CLN_COLS = df_train.filter(regex='^CLN').columns.tolist()
-for col in time_5000:
-    col_ = df_train.filter(regex=col+'$').columns.tolist()
-    col_ = [x for x in col_ if x not in CLN_COLS]    # filter된 col 중 CLN col 제외.
-    for column in col_:
-        df_train[column+'_test'] = df_train[column].apply(lambda x: 1 if x>5000 else 0)
-        df_predict[column+'_test'] = df_predict[column].apply(lambda x: 1 if x>5000 else 0)
-        
-''' TIME PARA5 처리 / 125 이상은 0, 아래는 1로 인코딩(데이터수가 많은 걸 BASE(0)으로.) '''
-time_125 = ['12_time_para5','13_time_para5','17_time_para5','18_time_para5']
-for col in time_125:
-    df_train[col+'_test'] = df_train[col].apply(lambda x: 1 if x <125 else 0)
-    df_predict[col+'_test'] = df_predict[col].apply(lambda x: 1 if x <125 else 0)
-    
-''' 2.6 이상 1, 아래 0 '''
-'04_tmp_para31'
-df_train['04_tmp_para31_test'] = df_train['04_tmp_para31'].apply(lambda x: 1 if x >=2.6 else 0)
-df_predict['04_tmp_para31_test'] = df_predict['04_tmp_para31'].apply(lambda x: 1 if x >=2.6 else 0)
-''' 2.8 이상 1, 아래 0 '''
-'06_tmp_para31'
-df_train['06_tmp_para31_test'] = df_train['06_tmp_para31'].apply(lambda x: 1 if x >=2.8 else 0)
-df_predict['06_tmp_para31_test'] = df_predict['06_tmp_para31'].apply(lambda x: 1 if x >=2.8 else 0)
-''' 4.0 이상 1, 아래 0 '''
-tmp_4 = ['12_tmp_para31','13_tmp_para31','17_tmp_para31','18_tmp_para31','20_tmp_para31']
-for col in tmp_4:
-    df_train[col+'_test'] = df_train[col].apply(lambda x: 1 if x>=4.0 else 0)
-    df_predict[col+'_test'] = df_predict[col].apply(lambda x: 1 if x>=4.0 else 0)
-    
+수치 단순화
 # np.round 하기
 TIME5_COL = df_train.filter(regex='time_para5$').columns.tolist()
 TOT_TCOL = df_train.filter(regex='time').loc[:,df_train.filter(regex='time').dtypes==float].columns.tolist()
@@ -189,142 +94,47 @@ TOT_TCOL = [col for col in TOT_TCOL if col not in TIME5_COL]
 df_train.loc[:, TOT_TCOL] = np.round(df_train[TOT_TCOL],0)    # TIME PARA5를 제외한 나머지만 round(0)
 df_predict.loc[:, TOT_TCOL] = np.round(df_predict[TOT_TCOL],0)
 
-df_train.loc[:, ROUND2_GAS_COL] = np.round(df_train[ROUND2_GAS_COL],2)
-df_predict.loc[:, ROUND2_GAS_COL] = np.round(df_predict[ROUND2_GAS_COL],2)
+GAS_COL = df_train.filter(regex='gas').columns.tolist()
+df_train.loc[:, GAS_COL] = np.round(df_train[GAS_COL],2)
+df_predict.loc[:, GAS_COL] = np.round(df_predict[GAS_COL],2)
 
 num_features = df_train.columns[df_train.dtypes==float].tolist()
 num_features.remove('y')
-num_features = [col for col in num_features if col not in ROUND2_GAS_COL]
+num_features = [col for col in num_features if col not in GAS_COL]
 df_train.loc[:,num_features] = np.round(df_train[num_features],1)    # TIME PARA는 round(1), TEMP도 round(1)
 df_predict.loc[:,num_features] = np.round(df_predict[num_features],1)
 
-C.T 하고
-df_final = df_train.copy()
-df_predict_final = df_predict.copy()
+CYCLIC all step end time에 적용하고
 
-''' 중복열 제거 step, para number 상관없이. '''
-drop_col = []
-for para in for_col_filter+['CLN']:
-    col = df_final.filter(regex=para).columns.tolist()
-    if col:
-        duplicate_deleted_df = df_final[col].T.drop_duplicates(subset=df_final[col].T.columns, keep='first').T
-        if len(df_final[col].columns.difference(duplicate_deleted_df.columns))==0:  # 다른게 없으면 무시,
-            continue
-        else:
-            drop_col.extend(df_final[col].columns.difference(duplicate_deleted_df.columns).tolist())
+
+
+# 모델링 적용에서
+''' PARA 별(position, time, efem 등) Standard Scaling / MINMAX나 ROBUST 로 바꿔서도 해보자. '''
+
+TEST_COLS = df_final_ohe.filter(regex='test$').columns.tolist()
+CLN_COLS = df_final_ohe.filter(regex='^CLN').columns.tolist()
+scalers = [StandardScaler() for k in range(len(for_col_filter))]
+scaled_ohe = df_final_ohe[COLS_ohe].copy(deep=True)
+scaled_predict_ohe = df_predict_final_ohe[COLS_ohe].copy(deep=True)
+
+for i, (scaler, filterp) in enumerate(zip(scalers, for_col_filter+['gen'])):
+    cols = scaled_ohe.filter(regex=filterp).columns.tolist()
+    cols = [col for col in cols if col not in TEST_COLS]
+    if filterp == 'time':
+        cols = [col for col in cols if col not in CLN_COLS]
+        mean = (scaled_ohe[cols].sum().sum())/(len(cols)*len(scaled_ohe))
+        std = ((scaled_ohe[cols]-mean)**2).sum().sum()/(len(cols)*len(scaled_ohe))
+        scaled_ohe.loc[:, cols] = (scaled_ohe[cols]-mean)/std
+        scaled_predict_ohe.loc[:, cols] = (scaled_predict_ohe[cols]-mean)/std
     else:
-        continue
-            
-# 새로 생성한 TEST COLUMNS 전처리
-test_col = df_final.filter(regex='test$').columns.tolist()
-duplicate_deleted_test_df = df_final[test_col].T.drop_duplicates(subset=df_final[test_col].T.columns, keep='first').T
-if len(df_final[test_col].columns.difference(duplicate_deleted_test_df.columns))!=0:
-    drop_col.extend(df_final[test_col].columns.difference(duplicate_deleted_test_df.columns).tolist())
-    
-drop_col = list(set(drop_col))
-df_final.drop(drop_col, axis=1, inplace=True)
-df_predict_final.drop(drop_col, axis=1, inplace=True)
-print(f'중복돼 제거된 COLUMNS : {drop_col}')
-
-var0_col = df_final.loc[:,df_final.nunique()==1].columns.tolist()
-df_final.drop(var0_col, axis=1, inplace=True)
-df_predict_final.drop(var0_col, axis=1, inplace=True)
-
-for i in range(47):
-    trains = df_final[df_final['module_name']==i]
-    predicts = df_predict_final[df_predict_final['module_name']==i]
-    ''' CLN_DAY COLUMN들 마지막 1을 기준으로 0,1 인코딩 '''
-    for col in trains.filter(regex='^CLN').columns.tolist():
-        if col:
-            if trains[trains[col]==1].index.tolist():
-                if predicts[predicts[col]==1].index.tolist():
-                    CLN_INDEX_TRAIN = trains[trains[col]==1].index[-1]    # 마지막 index를 기준으로, 
-                    CLN_INDEX_PREDICT = predicts[predicts[col]==1].index[-1]
-                    trains.loc[:CLN_INDEX_TRAIN-1, col] = 0
-                    trains.loc[CLN_INDEX_TRAIN:, col] = 1
-                    predicts.loc[:CLN_INDEX_PREDICT-1, col] = 0
-                    predicts.loc[CLN_INDEX_PREDICT:, col] = 1
-                    df_final[df_final['module_name']==i] = trains
-                    df_predict_final[df_predict_final['module_name']==i] = predicts
-                else:
-                    CLN_INDEX_TRAIN = trains[trains[col]==1].index[-1]
-                    trains.loc[:CLN_INDEX_TRAIN-1, col] = 0
-                    trains.loc[CLN_INDEX_TRAIN:, col] = 1
-                    df_final[df_final['module_name']==i] = trains
-            else:
-                continue
-        else:
-            continue
-
-# module name 원핫인코딩
-df_final_ohe = pd.concat([df_final, pd.get_dummies(df_final['module_name'], prefix='module_name')],axis=1)
-df_predict_final_ohe = pd.concat([df_predict_final, pd.get_dummies(df_predict_final['module_name'], prefix='module_name')],axis=1)
-df_final_ohe.drop('module_name', axis=1, inplace=True)
-df_predict_final_ohe.drop('module_name', axis=1, inplace=True)
-df_final_ohe.head()
-
-''' Cyclic Transformation 된 time만 사용. gen+float f들 '''
-# CAT 용
-num_features = list(df_final.columns[trains.dtypes==float])
-num_features.remove('y')
-CLN_COLS = df_final.filter(regex='^CLN').columns.tolist()
-TEST_COLS = df_final.filter(regex='test$').columns.tolist()
-CAT_FEATURES = ['module_name']
-
-COLS = CAT_FEATURES + num_features + CLN_COLS + TEST_COLS
-# XGB 용
-MODULE_ohe = df_final_ohe.filter(regex='^module_name').columns.tolist()
-
-COLS_ohe = MODULE_ohe + num_features + CLN_COLS + TEST_COLS
-
-
-# LGB
-def objective_LGB(trial):
-    param_lgb = {
-            'objective':'regression',
-            'metric':'rmse',
-            "random_state":42,
-            'learning_rate' : trial.suggest_float('learning_rate', 0.01, 0.5, step=0.01),
-#             "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 4e-5),
-#             "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
-            'feature_fraction' :trial.suggest_float('feature_fraction', 0.1, 1.0, step=0.1),
-            "n_estimators":trial.suggest_int("n_estimators", 100, 2000, step=10),
-            "max_depth":-1,
-            "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
-            "max_bin": trial.suggest_int("max_bin", 100, 500)
-    }
-    X = df_final[COLS]
-    y = df_final['y']
-
-    model = lgb.LGBMRegressor(**param_lgb, categorical_feature=0)
-    cv = KFold(11, shuffle=True, random_state=42)
-    scores = cross_val_score(model, X, y, cv=cv, scoring='neg_mean_squared_error')
-    scores = np.sqrt(-scores)
-    print(f'CV scores : {scores}')
-    print('Mean score : ', np.mean(scores))
-    rmsle_val = np.mean(scores)
-     
-    return rmsle_val
-    
-sampler = TPESampler(seed=42)
-study_lgb = optuna.create_study(
-                study_name="lgb_parameter_opt",
-                direction="minimize",
-                sampler=sampler,
-            )
-
-study_lgb.optimize(objective_LGB, n_trials=30)
-print("Best Score:", study_lgb.best_value)
-print("Best trial:", study_lgb.best_trial.params)
-    
-model = lgb.LGBMRegressor(**study_lgb.best_params, objective='regression', metric='rmse', random_state=42, categorical_feature=0)
-model.fit(df_final[COLS], df_final['y'])
-print('model training is completed')
->> 6.881457
-
-
-
-
+        mean = (scaled_ohe[cols].sum().sum())/(len(cols)*len(scaled_ohe))
+        std = ((scaled_ohe[cols]-mean)**2).sum().sum()/(len(cols)*len(scaled_ohe))
+        scaled_ohe.loc[:, cols] = (scaled_ohe[cols]-mean)/std
+        scaled_predict_ohe.loc[:, cols] = (scaled_predict_ohe[cols]-mean)/std
+        
+        
+LGB 돌리고서 Feature Importance 
+IMP_100COLS = pd.DataFrame({'params':COLS_ohe, 'importances':model_lgb.feature_importances_}).sort_values(by='importances', ascending=False)[:200].params.tolist()
 
 
 
