@@ -193,3 +193,18 @@ SELECTED_COLS = report.loc[report['val_metric_mean'] == report['val_metric_mean'
 SELECTED_COLS
 그리고 이 col로 다시 
 
+
+lgb para
+param_lgb = {
+            'objective':'regression',
+            'metric':'rmse',
+            "random_state":42,
+            'learning_rate' : trial.suggest_float('learning_rate', 0.01, 0.2, step=0.01),
+#             "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 4e-5),
+#             "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
+            'feature_fraction' :trial.suggest_float('feature_fraction', 0.1, 1.0, step=0.1),
+            "n_estimators":trial.suggest_int("n_estimators", 100, 2000, step=10),
+            "max_depth":-1,
+            "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+            "max_bin": trial.suggest_int("max_bin", 100, 500)
+    }
