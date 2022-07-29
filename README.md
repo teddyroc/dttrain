@@ -208,3 +208,82 @@ param_lgb = {
             "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
             "max_bin": trial.suggest_int("max_bin", 100, 500)
     }
+
+
+''' 같은 PARA 별 Standard Scaling '''
+''' PARA별 Standard Scaling '''
+scaled_ohe = df_final_ohe[COLS_ohe].copy(deep=True)
+scaled_predict_ohe = df_predict_final_ohe[COLS_ohe].copy(deep=True)
+
+''' 같은 PARA 별만 Standard Scaling '''
+for filterp in sensors_nm:
+    cols = scaled_ohe.filter(regex=filterp+'$').columns.tolist()
+    cols = [col for col in cols if col not in CLN_COLS]
+    n_cols = len(cols)
+    mean = (scaled_ohe[cols].sum().sum())/(n_cols*len(scaled_ohe))
+    std = ((scaled_ohe[cols]-mean)**2).sum().sum()/(n_cols*len(scaled_ohe))
+    scaled_ohe.loc[:, cols] = (scaled_ohe[cols]-mean)/std
+    scaled_predict_ohe.loc[:, cols] = (scaled_predict_ohe[cols]-mean)/std
+    
+''' 같은 PARA 별만 MINMAX SCALING '''
+''' PARA별 MinMax Scaling '''
+minmax_final_ohe = df_final_ohe[COLS_ohe].copy(deep=True)
+minmax_predict_ohe = df_predict_final_ohe[COLS_ohe].copy(deep=True)
+                
+''' 같은 PARA 별만 MINMAX Scaling '''
+for filterp in sensors_nm:
+    cols = minmax_final_ohe.filter(regex=filterp+'$').columns.tolist()
+    cols = [col for col in cols if col not in CLN_COLS]
+    min_ = minmax_final_ohe[cols].min()
+    max_ = minmax_final_ohe[cols].max()
+    minmax_final_ohe.loc[:,cols] = (minmax_final_ohe[cols] - min_)/(max_ - min_)
+    minmax_predict_ohe.loc[:, cols] = (minmax_predict_ohe[cols] - min_)/(max_ - min_)
+    
+''' PCA '''
+def pca_pre(datas,pred_datas, cols, n, step): 
+    pca = decomposition.PCA(n_components = n) 
+    pca_array = pca.fit_transform(datas[cols]) 
+    pca_array_pred = pca.transform(pred_datas[cols]) 
+    pca_df_train = pd.DataFrame(data = pca_array, columns = ['{0}_pca{1}'.format(step, num) for num in range(n)]) 
+    pca_df_pred = pd.DataFrame(data = pca_array_pred, columns = ['{0}_pca{1}'.format(step, num) for num in range(n)]) 
+    return pca_df_train, pca_df_pred
+    
+step_lst = ['04','06','13','18','20']
+SIN_COLS = scaled_ohe.filter(regex='sin$').columns.tolist()
+COS_COLS = scaled_ohe.filter(regex='cos$').columns.tolist()
+TEST_COLS = scaled_ohe.filter(regex='test$').columns.tolist()
+
+NOT_PCA_COLS = SIN_COLS+COS_COLS+TEST_COLS
+
+''' 같은 para끼리 PCA 진행. '''
+for i,col in enumerate(sensors_nm): 
+    cols = scaled_ohe.filter(regex=col+'$').columns.tolist() 
+    cols = list(set(cols))
+    cols = [k for k in cols if k not in NOT_PCA_COLS]
+    n_cols = len(cols) 
+    pca = decomposition.PCA(n_components = n_cols-1) 
+    pca_array = pca.fit_transform(scaled_ohe[cols])
+    result = pd.DataFrame({'설명가능한 분산 비율(고윳값)':pca.explained_variance_,\
+         '기여율':pca.explained_variance_ratio_},\
+        index=np.array([f"pca{num+1}" for num in range(n_cols-1)]))
+    result['누적기여율'] = result['기여율'].cumsum()
+    if len(result.loc[result['누적기여율']>=0.9,:].index) >=1:
+        try:
+            n = int(result.loc[result['누적기여율']>=0.9,:].index[0][-2:])
+            df, df_p = pca_pre(scaled_ohe, scaled_predict_ohe, cols, n, col)
+            scaled_ohe = pd.concat([scaled_ohe, df],axis=1)
+            scaled_predict_ohe = pd.concat([scaled_predict_ohe, df_p],axis=1)
+            scaled_ohe.drop(cols, axis=1, inplace=True)
+            scaled_predict_ohe.drop(cols, axis=1, inplace=True)
+        except:
+            n = int(result.loc[result['누적기여율']>=0.9,:].index[0][-1])
+            df, df_p = pca_pre(scaled_ohe, scaled_predict_ohe, cols, n, col)
+            scaled_ohe = pd.concat([scaled_ohe, df],axis=1)
+            scaled_predict_ohe = pd.concat([scaled_predict_ohe, df_p],axis=1)
+            scaled_ohe.drop(cols, axis=1, inplace=True)
+            scaled_predict_ohe.drop(cols, axis=1, inplace=True)
+    else:
+        print(cols)
+
+
+    
