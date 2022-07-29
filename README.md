@@ -286,4 +286,43 @@ for i,col in enumerate(sensors_nm):
         print(cols)
 
 
+ExtraTreesRegressor + Optuna
+from sklearn.ensemble import ExtraTreesRegressor
+
+def objective_ET(trial):
+    param = {
+#             "device_type": trial.suggest_categorical("device_type", ['gpu']),
+            "n_estimators": trial.suggest_int("n_estimators", 100, 2000, step=10),
+            'max_depth': trial.suggest_int("max_depth", 1, 12, step=1),
+            'min_samples_split': trial.suggest_int('min_samples_split', 2, 50),
+            'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 30),
+            'max_features':trial.suggest_categorical('max_features', ['auto','sqrt','log2'])
+    }
+        
+    X = df_final_ohe[COLS_ohe]
+    y = df_final_ohe['y']
+
+    model = ExtraTreesRegressor(**param, random_state=42)  
+    cv = KFold(5, shuffle=True, random_state=42)
+    scores = cross_val_score(model, X, y, cv=cv, scoring='neg_mean_squared_error', error_score='raise')
+    scores = np.sqrt(-scores)
+    print(f'CV scores : {scores}')
+    print('Mean score : ', np.mean(scores))
+    rmse_val = np.mean(scores)
+     
+    return rmse_val
     
+sampler = TPESampler(seed=42)
+study_et = optuna.create_study(
+            study_name="et_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+            )
+
+study_et.optimize(objective_ET, n_trials=20)
+print("Best Score:", study_et.best_value)
+print("Best trial:", study_et.best_trial.params)
+    
+model_et = ExtraTreesRegressor(**study_et.best_params, random_state=42)
+model_et.fit(df_final_ohe[COLS_ohe], df_final_ohe['y'])
+print('model training is completed')
