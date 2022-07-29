@@ -326,3 +326,62 @@ print("Best trial:", study_et.best_trial.params)
 model_et = ExtraTreesRegressor(**study_et.best_params, random_state=42)
 model_et.fit(df_final_ohe[COLS_ohe], df_final_ohe['y'])
 print('model training is completed')
+
+
+''' 챔버별 optuna '''
+param_lgb = {
+            'objective':'regression',
+            'metric':'rmse',
+            "random_state":42,
+            'learning_rate' : trial.suggest_float('learning_rate', 0.01, 0.2),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 4e-5),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
+            'bagging_fraction' :trial.suggest_loguniform('bagging_fraction', 0.01, 1.0),
+            "n_estimators":trial.suggest_int("n_estimators", 100, 2000),
+            "max_depth":-1,
+#             "colsample_bytree":trial.suggest_float("colsample_bytree", 0.3, 1.0),
+            "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+            "max_bin": trial.suggest_int("max_bin", 100, 500)
+        }
+        
+gbr은 이거 참고해서 돌려
+gbr = GradientBoostingRegressor(n_estimators=3000, learning_rate=0.05,
+                                   max_depth=4, max_features='sqrt',
+                                   min_samples_leaf=15, min_samples_split=10, 
+                                   loss='huber', random_state =42)
+                                   
+def objective_GBR(trial):
+    param_gbr = {
+            "loss": trial.suggest_categorical("loss", ["squared_error", "huber"]),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 2000),
+            "max_depth": trial.suggest_int("max_depth", 3, 12),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01,0.2),
+            'max_features':trial.suggest_categorical("max_features", ["auto", "sqrt","log2"])
+    }
+        
+    X = df_final_ohe[COLS_ohe]
+    y = df_final_ohe['y']
+
+    model = GradientBoostingRegressor(**param_gbr, random_state=0, criterion='mse')
+    cv = KFold(7,shuffle=True, random_state=0)
+    scores = cross_val_score(model, X, y, cv=cv, scoring='neg_mean_squared_error')
+    scores = np.sqrt(-scores)
+    print(f'CV scores : {scores}')
+    print('Mean score : ', np.mean(scores))
+    rmse_val = np.mean(scores)
+     
+    return rmse_val
+    
+sampler = TPESampler(seed=42)
+study_gbr = optuna.create_study(
+            study_name="gbr_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+            )
+study_gbr.optimize(objective_GBR, n_trials=30, timeout=600)
+print("Best Score:", study_gbr.best_value)
+print("Best trial:", study_gbr.best_trial.params)
+    
+model_gbr = GradientBoostingRegressor(**study_gbr.best_params, random_state=0, criterion='mse')
+model_gbr.fit(df_final_ohe[COLS_ohe], df_final_ohe['y'])
+print('model training is completed')
