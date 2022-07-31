@@ -385,3 +385,151 @@ print("Best trial:", study_gbr.best_trial.params)
 model_gbr = GradientBoostingRegressor(**study_gbr.best_params, random_state=0, criterion='mse')
 model_gbr.fit(df_final_ohe[COLS_ohe], df_final_ohe['y'])
 print('model training is completed')
+
+
+''' Feature Selection RFECV '''
+TOT_COLS = minmax_final.columns.tolist()
+MODULE_COLS = minmax_final.filter(regex='^module_name').columns.tolist()
+CLN_COLS = minmax_final.filter(regex='^CLN').columns.tolist()
+GEN_COLS = minmax_final.filter(regex='^gen').columns.tolist()
+TEST_COLS = minmax_final.filter(regex='test$').columns.tolist()
+NOT_RFECV_COLS = MODULE_COLS+CLN_COLS+GEN_COLS+TEST_COLS
+FOR_RFECV_COLS = [col for col in TOT_COLS if col not in NOT_RFECV_COLS]    # 내가 추가한 col들은 select 대상에서 제외.
+
+# RFECV도 과적합될 수 있기 떄문에 미리 나눠서 fit 한다.
+X_train, X_test, y_train, y_test = train_test_split(minmax_final, df_final_ohe['y'], test_size=0.2, shuffle=True, random_state=42)
+
+model_lgb = lgb.LGBMRegressor(random_state=0)
+selector_lgb = RFECV(model_lgb, step=0.2, cv=10, scoring='neg_mean_squared_error')
+SELECTED_DF = pd.DataFrame(selector_lgb.fit_transform(X_train[FOR_RFECV_COLS], y_train))
+X_train.reset_index(drop=True, inplace=True)
+df = pd.concat([X_train[NOT_RFECV_COLS],SELECTED_DF], axis=1)
+df.head()
+
+SELECTED_DF_TEST = pd.DataFrame(selector_lgb.transform(X_test[FOR_RFECV_COLS]))
+X_test.reset_index(drop=True, inplace=True)
+df_test = pd.concat([X_test[NOT_RFECV_COLS],SELECTED_DF_TEST], axis=1)
+df_test.head(3)
+
+''' RFECV는 이렇게 출력이 돼서 좀 불편함. '''
+for i,col in enumerate(X_train.columns):
+    print('Column: %s, Selected %s, Rank: %.3f' % (col, selector_lgb.support_[i], selector_lgb.ranking_[i]))
+
+''' Feature Selection SelectKBest '''
+from sklearn.feature_selection import SelectKBest, f_regression, SelectPercentile
+
+kb = SelectKBest(mutual_info_regression, k=300).fit(X_train[FOR_RFECV_COLS], pd.Series(y_train))
+for_train_concat = pd.DataFrame(kb.transform(X_train[FOR_RFECV_COLS]))
+X_train.reset_index(drop=True, inplace=True)
+df_train = pd.concat([for_train_concat, X_train[NOT_RFECV_COLS]],axis=1)
+
+X_new = pd.DataFrame(kb.transform(X_test[FOR_RFECV_COLS]))
+X_test.reset_index(drop=True, inplace=True)
+df_test = pd.concat([X_new, X_test[NOT_RFECV_COLS]], axis=1)
+df_test.head(3)
+
+''' optuna+xgb로 TEST set에 대해서 성능 chk '''
+# train set으로만 훈련 후
+
+def objective_XGB(trial):
+    param_xgb = {
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 2000),
+            # maximum depth of the tree, signifies complexity of the tree.
+            "max_depth": trial.suggest_int("max_depth", 3, 12),
+            # minimum child weight, larger the term more conservative the tree.
+            "min_child_weight": trial.suggest_int("min_child_weight", 2, 10),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01,0.2),
+            # defines how selective algorithm is.
+            "gamma": trial.suggest_float("gamma", 1e-8, 1.0, log=True),
+            "grow_policy": trial.suggest_categorical("grow_policy", ["depthwise", "lossguide"])
+    }
+        
+    X = df_train
+    y = y_train
+
+    model = xgb.XGBRegressor(**param_xgb, booster='gbtree', random_state=0)
+    cv = KFold(7, shuffle=True, random_state=0)
+    scores = cross_val_score(model, X, y, cv=cv, scoring='neg_mean_squared_error')
+    scores = np.sqrt(-scores)
+    print(f'CV scores : {scores}')
+    print('Mean score : ', np.mean(scores))
+    rmse_val = np.mean(scores)
+     
+    return rmse_val
+    
+sampler = TPESampler(seed=42)
+study_xgb = optuna.create_study(
+            study_name="xgb_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+    )
+study_xgb.optimize(objective_XGB, n_trials=30, timeout=600)
+print("Best Score:", study_xgb.best_value)
+print("Best trial:", study_xgb.best_trial.params)
+    
+model_xgb = xgb.XGBRegressor(**study_xgb.best_params, booster='gbtree', gpu_id='0', random_state=0)
+model_xgb.fit(df_train, y_train)
+print('model training is completed')
+
+
+xgb_pred = model_xgb.predict(df_test)
+RMSE(y_test, xgb_pred)
+
+''' 해서 괜찮으면 전체에 대해서 사용. '''
+# kb는 그대로 두고.
+for_concat = pd.DataFrame(kb.transform(minmax_final[FOR_RFECV_COLS]))
+minmax_train = pd.concat([minmax_final[NOT_RFECV_COLS], for_concat], axis=1)
+for_predict_concat = pd.DataFrame(kb.transform(minmax_predict_final[FOR_RFECV_COLS]))
+minmax_predict = pd.concat([minmax_predict_final[NOT_RFECV_COLS], for_predict_concat], axis=1)
+print((minmax_train.columns != minmax_predict.columns).sum())
+>> 0 나오면.
+
+def objective_XGB(trial):
+    param_xgb = {
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 9e-2),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 2000),
+            # maximum depth of the tree, signifies complexity of the tree.
+            "max_depth": trial.suggest_int("max_depth", 3, 12),
+            # minimum child weight, larger the term more conservative the tree.
+            "min_child_weight": trial.suggest_int("min_child_weight", 2, 10),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01,0.2),
+            # defines how selective algorithm is.
+            "gamma": trial.suggest_float("gamma", 1e-8, 1.0, log=True),
+            "grow_policy": trial.suggest_categorical("grow_policy", ["depthwise", "lossguide"])
+    }
+        
+    X = minmax_train
+    y = df_final_ohe['y']
+
+    model = xgb.XGBRegressor(**param_xgb, booster='gbtree', random_state=0)
+    cv = KFold(7, shuffle=True, random_state=0)
+    scores = cross_val_score(model, X, y, cv=cv, scoring='neg_mean_squared_error')
+    scores = np.sqrt(-scores)
+    print(f'CV scores : {scores}')
+    print('Mean score : ', np.mean(scores))
+    rmse_val = np.mean(scores)
+     
+    return rmse_val
+    
+sampler = TPESampler(seed=42)
+study_xgb = optuna.create_study(
+            study_name="xgb_parameter_opt",
+            direction="minimize",
+            sampler=sampler,
+    )
+study_xgb.optimize(objective_XGB, n_trials=30, timeout=600)
+print("Best Score:", study_xgb.best_value)
+print("Best trial:", study_xgb.best_trial.params)
+    
+model_xgb = xgb.XGBRegressor(**study_xgb.best_params, booster='gbtree', gpu_id='0', random_state=0)
+model_xgb.fit(minmax_train, df_final_ohe['y'])
+print('model training is completed')
+
+&
+
+xgb_pred = model_xgb.predict(minmax_predict)
+xgb_pred
+
+하면 된다.
+
